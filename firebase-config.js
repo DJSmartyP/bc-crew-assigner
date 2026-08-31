@@ -1,14 +1,14 @@
-// Fill this file after creating the separate Firebase project.
-// Firebase web config values are designed to be used in browser code.
+// Firebase web configuration for the Bridge Command Crew Planner.
+// These values are intended to be used client-side.
 export const firebaseConfig = {
-  apiKey: "PASTE_API_KEY",
-  authDomain: "PASTE_PROJECT.firebaseapp.com",
-  projectId: "PASTE_PROJECT_ID",
-  storageBucket: "PASTE_STORAGE_BUCKET",
-  messagingSenderId: "PASTE_SENDER_ID",
-  appId: "PASTE_APP_ID"
+  apiKey: "AIzaSyDwxv1oE9UY_YsTABUUHyfJ4dcNqo4nMg0",
+  authDomain: "bc-crew-autoassigner.firebaseapp.com",
+  projectId: "bc-crew-autoassigner",
+  storageBucket: "bc-crew-autoassigner.firebasestorage.app",
+  messagingSenderId: "547695320366",
+  appId: "1:547695320366:web:49e784ee329f4c28f32ebf"
 };
 
-// After you create your Admin account in Firebase Authentication,
-// paste its UID here AND in firestore.rules.
+// After creating your single Admin account in Firebase Authentication,
+// paste its User UID here AND into firestore.rules.
 export const ADMIN_UID = "PASTE_ADMIN_UID";

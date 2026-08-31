@@ -10,11 +10,11 @@ This project uses **GitHub Pages + one separate Firebase project**. No paid serv
 4. Do not enable Firebase Hosting; GitHub Pages will host the site.
 5. In the web-app setup screen choose **Config** and copy the `firebaseConfig` values.
 
-## 2. Put the Firebase config into the repo
+## 2. Firebase config
 
-Open `firebase-config.js` and replace every `PASTE_...` value with the values Firebase gives you.
+Already completed in the configured package. You do not need to copy Firebase's npm imports or edit the project values again.
 
-Do not use the npm example. This project loads Firebase directly in the browser.
+The only remaining value in `firebase-config.js` is the Admin UID, which is added after creating the Admin account.
 
 ## 3. Enable Authentication
 
