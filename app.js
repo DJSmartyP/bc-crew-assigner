@@ -340,7 +340,206 @@ function showModal(content){document.body.insertAdjacentHTML("beforeend",`<div i
 function closeModal(){$("#modalBackdrop")?.remove();}
 
 async function openMissionManager(id){clearUnsubs();const ref=doc(db,"missions",id),snap=await getDoc(ref);if(!snap.exists()){alert("Deployment not found.");return;}const mission={id:snap.id,...snap.data()};if(currentRole!=="admin"&&mission.ownerUid!==currentUser.uid){alert("You don't have access to manage this deployment.");return;}activeMission=mission;renderManagerShell();const playerRef=collection(db,"missions",id,"players");missionUnsubs.push(onSnapshot(ref,s=>{if(!s.exists())return;activeMission={id:s.id,...s.data()};renderManagerState();}));missionUnsubs.push(onSnapshot(playerRef,s=>{missionPlayers=s.docs.map(d=>({id:d.id,...d.data()}));renderManagerState();}));}
-function renderManagerShell(){const m=activeMission;main.innerHTML=`<div class="page-head"><div><button id="backDashboard" class="btn ghost tiny">← Dashboard</button><div class="eyebrow" style="margin-top:10px">Crew management</div><h1>${esc(missionTitle(m))}</h1><p class="sub">${esc(dateText(m.date))}</p></div><div class="actions"><button id="editMissionBtn" class="btn ghost">Deployment setup</button><button id="closeChoicesBtn" class="btn ${m.closed?"success":"danger"}">${m.closed?"Reopen choices":"Close choices"}</button></div></div><div class="grid two"><aside><section class="panel sticky"><h2>Player link</h2><p class="sub">Send this link to everyone who should add their preferences.</p><div class="share-box"><input id="managerShareLink" readonly value="${esc(buildMissionLink(m.id))}"><button id="managerCopy" class="btn primary tiny">Copy link</button></div><div class="stat-row" id="managerStats"></div><div class="actions"><button id="addPlayerBtn" class="btn ghost">Add someone</button></div><div id="managerMessage" class="message"></div></section><section class="panel"><h2>Responses</h2><div id="responseList" class="response-list"></div></section></aside><section class="panel"><div class="eyebrow">Live suggestion</div><h2>Current crew plan</h2><p class="sub">The whole suggestion is recalculated whenever a preference changes. Fixed organiser choices are worked around automatically.</p><div id="managerPlan"></div></section></div>`;$("#backDashboard").onclick=()=>{clearUnsubs();currentRole==="admin"?renderAdminDashboard():renderOrganiserDashboard();};$("#editMissionBtn").onclick=()=>openMissionSetup(activeMission);$("#managerCopy").onclick=()=>copyMissionLink(m.id,$("#managerCopy"));$("#closeChoicesBtn").onclick=async()=>{await updateDoc(doc(db,"missions",m.id),{closed:!activeMission.closed,updatedAt:serverTimestamp()});};$("#addPlayerBtn").onclick=()=>openOrganiserPlayerEditor();}
+
+function safeFilenamePart(value){
+  return String(value||"")
+    .trim()
+    .replace(/[<>:"/\\|?*\x00-\x1F]/g,"")
+    .replace(/\s+/g,"-")
+    .replace(/-+/g,"-")
+    .replace(/^-|-$/g,"")
+    .slice(0,80) || "deployment";
+}
+function deploymentPdfFilename(mission){
+  const shipPart=(mission?.ships||[]).map((s,i)=>safeFilenamePart(displayShip(s,i))).join("-");
+  return `${safeFilenamePart(missionTitle(mission))}_${shipPart||"crew"}_Crew.pdf`;
+}
+function blobToDataUrl(blob){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=()=>resolve(reader.result);
+    reader.onerror=reject;
+    reader.readAsDataURL(blob);
+  });
+}
+async function pdfImageData(url){
+  if(!url)return null;
+  try{
+    const response=await fetch(url,{mode:"cors",cache:"force-cache"});
+    if(!response.ok)return null;
+    return await blobToDataUrl(await response.blob());
+  }catch{
+    return null;
+  }
+}
+function pdfTeamPalette(team){
+  const palettes={
+    command:{fill:[245,188,66],text:[55,38,5]},
+    operations:{fill:[232,137,55],text:[52,26,8]},
+    science:{fill:[74,201,229],text:[5,42,54]},
+    engineering:{fill:[73,186,126],text:[8,46,29]},
+    shuttle:{fill:[157,111,220],text:[32,14,56]}
+  };
+  return palettes[team]||{fill:[177,194,208],text:[17,31,43]};
+}
+function assignmentForRole(shipPlan,role){
+  return (shipPlan?.assignments||[]).find(a=>a.role===role)||null;
+}
+async function generateCrewPdf(){
+  const button=$("#downloadCrewPdfBtn");
+  const message=$("#managerMessage");
+  if(!activeMission)return;
+
+  if(!window.jspdf?.jsPDF){
+    setMessage(message,"PDF generator did not load. Refresh the page and try again.","error");
+    return;
+  }
+
+  const oldText=button?.textContent;
+  if(button){
+    button.disabled=true;
+    button.textContent="Generating PDF…";
+  }
+  setMessage(message,"Creating crew PDF…");
+
+  try{
+    const plan=computePlan(missionPlayers,activeMission);
+    const {jsPDF}=window.jspdf;
+    const pdf=new jsPDF({orientation:"portrait",unit:"mm",format:"a4",compress:true});
+    const pageW=210,pageH=297;
+    const margin=14;
+    const navy=[7,23,39];
+    const deepNavy=[4,15,28];
+    const cyan=[90,211,235];
+    const gold=[241,187,72];
+    const ink=[25,38,50];
+    const muted=[101,116,130];
+    const light=[244,247,249];
+    const line=[219,227,233];
+
+    const shipImages={};
+    for(const ship of (activeMission.ships||[])){
+      const url=shipBadgeUrl(ship);
+      if(url&&!shipImages[url])shipImages[url]=await pdfImageData(url);
+    }
+
+    const drawText=(text,x,y,size=10,style="normal",colour=ink,opts={})=>{
+      pdf.setFont("helvetica",style);
+      pdf.setFontSize(size);
+      pdf.setTextColor(...colour);
+      pdf.text(String(text??""),x,y,opts);
+    };
+
+    const teamRoleMap=TEAMS.map(team=>({
+      ...team,
+      roleObjects:team.roles.map(name=>roleFor(name))
+    }));
+
+    plan.byShip.forEach((shipPlan,pageIndex)=>{
+      if(pageIndex>0)pdf.addPage();
+
+      const ship=shipPlan.ship;
+      const shipIndex=(activeMission.ships||[]).findIndex(s=>s.id===ship.id);
+      const shipName=displayShip(ship,shipIndex);
+      const assignedCount=shipPlan.assignments.length;
+      const shipImage=shipImages[shipBadgeUrl(ship)]||null;
+
+      // Full page background + top masthead.
+      pdf.setFillColor(252,253,254);
+      pdf.rect(0,0,pageW,pageH,"F");
+      pdf.setFillColor(...deepNavy);
+      pdf.rect(0,0,pageW,47,"F");
+      pdf.setFillColor(...navy);
+      pdf.rect(0,0,7,47,"F");
+      pdf.setFillColor(...gold);
+      pdf.rect(7,0,1.4,47,"F");
+
+      // Optimisation line requested by organiser.
+      drawText(
+        "CREW POSITIONS OPTIMISED BY INTERSTELLAR DEPLOYMENT PLANNER",
+        margin,8.2,7.2,"bold",gold
+      );
+
+      // Deployment details.
+      drawText(missionTitle(activeMission),margin,17.5,18,"bold",[245,249,252]);
+      drawText(dateText(activeMission.date),margin,24.4,9.5,"normal",[186,207,222]);
+      drawText(`Ships: ${deploymentShipSummary(activeMission)}`,margin,30.5,9.5,"normal",[186,207,222]);
+      drawText(
+        `Crew: ${missionPlayers.length}   |   Choices: ${activeMission.closed?"Closed":"Open"}`,
+        margin,36.6,9.5,"normal",[186,207,222]
+      );
+
+      // Ship identity on the right.
+      if(shipImage){
+        try{pdf.addImage(shipImage,"WEBP",169,10,22,22,undefined,"FAST");}
+        catch{
+          try{pdf.addImage(shipImage,"PNG",169,10,22,22,undefined,"FAST");}catch{}
+        }
+      }
+      drawText(shipName,196,39,13,"bold",[245,249,252],{align:"right"});
+      drawText(`${assignedCount} crew assigned`,196,44,8.5,"normal",[186,207,222],{align:"right"});
+
+      let y=56;
+
+      // Ship-level heading.
+      drawText(`${shipName.toUpperCase()} CREW ASSIGNMENT`,margin,y,12,"bold",navy);
+      pdf.setDrawColor(...cyan);
+      pdf.setLineWidth(0.7);
+      pdf.line(margin,y+3,pageW-margin,y+3);
+      y+=9;
+
+      for(const team of teamRoleMap){
+        const palette=pdfTeamPalette(team.id);
+
+        pdf.setFillColor(...palette.fill);
+        pdf.roundedRect(margin,y,pageW-(margin*2),7,1.5,1.5,"F");
+        drawText(team.name.toUpperCase(),margin+3,y+4.8,8.5,"bold",palette.text);
+        y+=9;
+
+        for(const roleObj of team.roleObjects){
+          const role=roleObj.name;
+          const assignment=assignmentForRole(shipPlan,role);
+          const active=(shipPlan.allowed||[]).includes(role);
+          const value=assignment?.name || (active?"To be decided":"Not in use");
+
+          pdf.setFillColor(...(active?[255,255,255]:light));
+          pdf.setDrawColor(...line);
+          pdf.setLineWidth(0.3);
+          pdf.roundedRect(margin,y,pageW-(margin*2),8,1,1,"FD");
+
+          drawText(role,margin+3,y+5.2,9,"bold",active?ink:muted);
+          drawText(value,pageW-margin-3,y+5.2,9,assignment?"bold":"normal",active?ink:muted,{align:"right"});
+          y+=9;
+        }
+        y+=2;
+      }
+
+      // Footer.
+      pdf.setDrawColor(...line);
+      pdf.setLineWidth(0.3);
+      pdf.line(margin,pageH-14,pageW-margin,pageH-14);
+      drawText("Interstellar Deployment Planner",margin,pageH-9,7.8,"bold",navy);
+      drawText(
+        `Generated ${new Intl.DateTimeFormat("en-GB",{dateStyle:"medium",timeStyle:"short"}).format(new Date())}`,
+        pageW-margin,pageH-9,7.8,"normal",muted,{align:"right"}
+      );
+      drawText(`Page ${pageIndex+1} of ${plan.byShip.length}`,pageW-margin,pageH-5,7,"normal",muted,{align:"right"});
+    });
+
+    pdf.save(deploymentPdfFilename(activeMission));
+    setMessage(message,"Crew PDF downloaded.","success");
+  }catch(ex){
+    console.error("PDF generation failed",ex);
+    setMessage(message,`Could not generate PDF: ${ex.message||ex}`,"error");
+  }finally{
+    if(button){
+      button.disabled=false;
+      button.textContent=oldText||"Download crew PDF";
+    }
+  }
+}
+
+function renderManagerShell(){const m=activeMission;main.innerHTML=`<div class="page-head"><div><button id="backDashboard" class="btn ghost tiny">← Dashboard</button><div class="eyebrow" style="margin-top:10px">Crew management</div><h1>${esc(missionTitle(m))}</h1><p class="sub">${esc(dateText(m.date))}</p></div><div class="actions"><button id="downloadCrewPdfBtn" class="btn primary">Download crew PDF</button><button id="editMissionBtn" class="btn ghost">Deployment setup</button><button id="closeChoicesBtn" class="btn ${m.closed?"success":"danger"}">${m.closed?"Reopen choices":"Close choices"}</button></div></div><div class="grid two"><aside><section class="panel sticky"><h2>Player link</h2><p class="sub">Send this link to everyone who should add their preferences.</p><div class="share-box"><input id="managerShareLink" readonly value="${esc(buildMissionLink(m.id))}"><button id="managerCopy" class="btn primary tiny">Copy link</button></div><div class="stat-row" id="managerStats"></div><div class="actions"><button id="addPlayerBtn" class="btn ghost">Add someone</button></div><div id="managerMessage" class="message"></div></section><section class="panel"><h2>Responses</h2><div id="responseList" class="response-list"></div></section></aside><section class="panel"><div class="eyebrow">Live suggestion</div><h2>Current crew plan</h2><p class="sub">The whole suggestion is recalculated whenever a preference changes. Fixed organiser choices are worked around automatically.</p><div id="managerPlan"></div></section></div>`;$("#backDashboard").onclick=()=>{clearUnsubs();currentRole==="admin"?renderAdminDashboard():renderOrganiserDashboard();};$("#downloadCrewPdfBtn").onclick=generateCrewPdf;$("#editMissionBtn").onclick=()=>openMissionSetup(activeMission);$("#managerCopy").onclick=()=>copyMissionLink(m.id,$("#managerCopy"));$("#closeChoicesBtn").onclick=async()=>{await updateDoc(doc(db,"missions",m.id),{closed:!activeMission.closed,updatedAt:serverTimestamp()});};$("#addPlayerBtn").onclick=()=>openOrganiserPlayerEditor();}
 function renderManagerState(){if(!activeMission||!$("#managerPlan"))return;const cap=(activeMission.ships?.length||1)*MAX_PER_SHIP,plan=computePlan(missionPlayers,activeMission);$("#closeChoicesBtn").textContent=activeMission.closed?"Reopen choices":"Close choices";$("#closeChoicesBtn").className=`btn ${activeMission.closed?"success":"danger"}`;$("#managerStats").innerHTML=`<span class="stat"><b>${missionPlayers.length}</b> responses</span><span class="stat"><b>${cap}</b> places</span><span class="stat"><b>${plan.metrics.first}</b> first choices</span>${plan.metrics.avoid?`<span class="stat"><b>${plan.metrics.avoid}</b> last-resort roles</span>`:""}`;$("#managerPlan").innerHTML=renderPlan(plan,activeMission,{organiser:true});$("#responseList").innerHTML=missionPlayers.length?[...missionPlayers].sort(prioritySort).map(p=>responseRow(p)).join(""):`<p class="sub">No responses yet.</p>`;document.querySelectorAll("[data-edit-player]").forEach(b=>b.onclick=()=>openOrganiserPlayerEditor(missionPlayers.find(p=>p.id===b.dataset.editPlayer)));document.querySelectorAll("[data-delete-player]").forEach(b=>b.onclick=()=>deleteOrganiserPlayer(b.dataset.deletePlayer));}
 function responseRow(p){const ov=getOverride(activeMission,p.id);const pref=(p.prefs||[]).map(x=>x===FLEX?"No preference":x).join(" → ");const ship=p.shipPref?(activeMission.ships||[]).findIndex(s=>s.id===p.shipPref):-1;return `<div class="response-row"><div class="response-top"><div><div class="response-name">${esc(p.name)}</div><div class="response-meta">${ship>=0?`Ship: ${esc(displayShip(activeMission.ships[ship],ship))}`:"Ship: no preference"}<br>${esc(pref)}</div>${ov?.role?`<div class="fixed-note">Locked: ${esc(ov.role)}${ov.shipId?` · ${esc(displayShip(activeMission.ships.find(s=>s.id===ov.shipId),activeMission.ships.findIndex(s=>s.id===ov.shipId)))}`:" · either ship"}</div>`:""}</div><div class="actions"><button class="btn ghost tiny" data-edit-player="${p.id}">Edit</button><button class="btn danger tiny" data-delete-player="${p.id}">Delete</button></div></div></div>`;}
 async function deleteOrganiserPlayer(id){const p=missionPlayers.find(x=>x.id===id);if(!p||!confirm(`Delete ${p.name}'s response?`))return;await deleteDoc(doc(db,"missions",activeMission.id,"players",id));if(activeMission.overrides?.[id]){const overrides={...(activeMission.overrides||{})};delete overrides[id];await updateDoc(doc(db,"missions",activeMission.id),{overrides,updatedAt:serverTimestamp()});}}
