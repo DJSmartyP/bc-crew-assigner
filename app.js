@@ -374,16 +374,102 @@ async function pdfImageData(url){
 }
 function pdfTeamPalette(team){
   const palettes={
-    command:{fill:[245,188,66],text:[55,38,5]},
-    operations:{fill:[232,137,55],text:[52,26,8]},
-    science:{fill:[74,201,229],text:[5,42,54]},
-    engineering:{fill:[73,186,126],text:[8,46,29]},
-    shuttle:{fill:[157,111,220],text:[32,14,56]}
+    command:{fill:"#F2BC48",text:"#2E2208",glow:"#F7D987"},
+    operations:{fill:"#E88937",text:"#301A08",glow:"#FFC18D"},
+    science:{fill:"#41D3EB",text:"#062B35",glow:"#A7F1FC"},
+    engineering:{fill:"#49BA7E",text:"#082D1D",glow:"#A6EFC8"},
+    shuttle:{fill:"#9D6FDC",text:"#23133C",glow:"#DCC8F9"}
   };
-  return palettes[team]||{fill:[177,194,208],text:[17,31,43]};
+  return palettes[team]||{fill:"#B1C2D0",text:"#172531",glow:"#E1E9EF"};
 }
 function assignmentForRole(shipPlan,role){
   return (shipPlan?.assignments||[]).find(a=>a.role===role)||null;
+}
+function loadCanvasImage(dataUrl){
+  return new Promise((resolve,reject)=>{
+    if(!dataUrl){resolve(null);return;}
+    const image=new Image();
+    image.onload=()=>resolve(image);
+    image.onerror=()=>reject(new Error("Image could not be loaded"));
+    image.src=dataUrl;
+  });
+}
+function roundRectPath(ctx,x,y,w,h,r){
+  const rr=Math.min(r,w/2,h/2);
+  ctx.beginPath();
+  ctx.moveTo(x+rr,y);
+  ctx.arcTo(x+w,y,x+w,y+h,rr);
+  ctx.arcTo(x+w,y+h,x,y+h,rr);
+  ctx.arcTo(x,y+h,x,y,rr);
+  ctx.arcTo(x,y,x+w,y,rr);
+  ctx.closePath();
+}
+function fillRoundRect(ctx,x,y,w,h,r,fill,stroke=null,lineWidth=1){
+  roundRectPath(ctx,x,y,w,h,r);
+  if(fill){ctx.fillStyle=fill;ctx.fill();}
+  if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=lineWidth;ctx.stroke();}
+}
+function canvasFont(ctx,size,weight="600",family="Rajdhani"){
+  ctx.font=`${weight} ${size}px "${family}", sans-serif`;
+}
+function fitCanvasText(ctx,text,maxWidth,startSize,minSize,weight="700",family="Orbitron"){
+  const value=String(text??"");
+  let size=startSize;
+  while(size>minSize){
+    canvasFont(ctx,size,weight,family);
+    if(ctx.measureText(value).width<=maxWidth)break;
+    size-=1;
+  }
+  return size;
+}
+function drawCanvasText(ctx,text,x,y,{size=28,weight="600",family="Rajdhani",colour="#172531",align="left",baseline="alphabetic",maxWidth=null}={}){
+  canvasFont(ctx,size,weight,family);
+  ctx.fillStyle=colour;
+  ctx.textAlign=align;
+  ctx.textBaseline=baseline;
+  if(maxWidth)ctx.fillText(String(text??""),x,y,maxWidth);
+  else ctx.fillText(String(text??""),x,y);
+}
+function drawHudCorners(ctx,x,y,w,h,colour="#41D3EB",length=28,line=3){
+  ctx.strokeStyle=colour;
+  ctx.lineWidth=line;
+  ctx.beginPath();
+  ctx.moveTo(x,y+length);ctx.lineTo(x,y);ctx.lineTo(x+length,y);
+  ctx.moveTo(x+w-length,y);ctx.lineTo(x+w,y);ctx.lineTo(x+w,y+length);
+  ctx.moveTo(x,y+h-length);ctx.lineTo(x,y+h);ctx.lineTo(x+length,y+h);
+  ctx.moveTo(x+w-length,y+h);ctx.lineTo(x+w,y+h);ctx.lineTo(x+w,y+h-length);
+  ctx.stroke();
+}
+function drawHexBadge(ctx,cx,cy,r,label,accent="#41D3EB"){
+  ctx.save();
+  ctx.translate(cx,cy);
+  ctx.beginPath();
+  for(let i=0;i<6;i++){
+    const a=-Math.PI/2+i*Math.PI/3;
+    const px=Math.cos(a)*r,py=Math.sin(a)*r;
+    if(i===0)ctx.moveTo(px,py);else ctx.lineTo(px,py);
+  }
+  ctx.closePath();
+  ctx.fillStyle="#0A2034";ctx.fill();
+  ctx.strokeStyle=accent;ctx.lineWidth=4;ctx.stroke();
+  ctx.beginPath();ctx.arc(0,0,r*0.68,0,Math.PI*2);ctx.strokeStyle="rgba(255,255,255,.16)";ctx.lineWidth=2;ctx.stroke();
+  drawCanvasText(ctx,label,0,4,{size:Math.round(r*.48),weight:"800",family:"Orbitron",colour:"#F7FBFE",align:"center",baseline:"middle"});
+  ctx.restore();
+}
+function drawCircuitDecoration(ctx,w,h){
+  ctx.save();
+  ctx.strokeStyle="rgba(65,211,235,.11)";
+  ctx.lineWidth=2;
+  const paths=[
+    [[80,410],[210,410],[210,460],[355,460]],
+    [[w-80,420],[w-250,420],[w-250,505],[w-390,505]],
+    [[95,h-310],[245,h-310],[245,h-365],[360,h-365]],
+    [[w-100,h-260],[w-260,h-260],[w-260,h-335],[w-390,h-335]]
+  ];
+  for(const pts of paths){ctx.beginPath();pts.forEach((p,i)=>i?ctx.lineTo(...p):ctx.moveTo(...p));ctx.stroke();}
+  ctx.fillStyle="rgba(242,188,72,.20)";
+  for(const [x,y] of [[355,460],[w-390,505],[360,h-365],[w-390,h-335]]){ctx.beginPath();ctx.arc(x,y,5,0,Math.PI*2);ctx.fill();}
+  ctx.restore();
 }
 async function generateCrewPdf(){
   const button=$("#downloadCrewPdfBtn");
@@ -396,207 +482,207 @@ async function generateCrewPdf(){
   }
 
   const oldText=button?.textContent;
-  if(button){
-    button.disabled=true;
-    button.textContent="Generating PDF…";
-  }
+  if(button){button.disabled=true;button.textContent="Generating PDF…";}
   setMessage(message,"Creating themed crew PDF…");
 
   try{
+    if(document.fonts?.ready){
+      await document.fonts.ready;
+      await Promise.allSettled([
+        document.fonts.load('800 34px Orbitron'),
+        document.fonts.load('700 24px Orbitron'),
+        document.fonts.load('600 28px Rajdhani'),
+        document.fonts.load('700 28px Rajdhani')
+      ]);
+    }
+
     const plan=computePlan(missionPlayers,activeMission);
     const {jsPDF}=window.jspdf;
     const pdf=new jsPDF({orientation:"portrait",unit:"mm",format:"a4",compress:true});
-    const pageW=210,pageH=297;
-    const margin=13;
-    const navy=[7,23,39];
-    const deepNavy=[3,13,27];
-    const cyan=[65,211,235];
-    const gold=[242,188,72];
-    const ink=[23,37,49];
-    const muted=[106,120,132];
-    const light=[244,247,249];
-    const shuttleGrey=[224,229,233];
-    const shuttleText=[111,123,133];
-    const line=[216,225,232];
-    const white=[248,251,253];
 
-    // Reuse the site's own visual identity inside the generated document.
-    const [brandBanner,brandIcon]=await Promise.all([
+    const [brandBannerData,brandIconData]=await Promise.all([
       pdfImageData("./site-header-banner.png"),
       pdfImageData("./site-icon.png")
     ]);
+    const brandBanner=await loadCanvasImage(brandBannerData).catch(()=>null);
+    const brandIcon=await loadCanvasImage(brandIconData).catch(()=>null);
 
+    const shipImageData={};
     const shipImages={};
     for(const ship of (activeMission.ships||[])){
       const url=shipBadgeUrl(ship);
-      if(url&&!shipImages[url])shipImages[url]=await pdfImageData(url);
+      if(!url||shipImageData[url]!==undefined)continue;
+      shipImageData[url]=await pdfImageData(url);
+      shipImages[url]=await loadCanvasImage(shipImageData[url]).catch(()=>null);
     }
 
-    const drawText=(text,x,y,size=10,style="normal",colour=ink,opts={})=>{
-      pdf.setFont("helvetica",style);
-      pdf.setFontSize(size);
-      pdf.setTextColor(...colour);
-      pdf.text(String(text??""),x,y,opts);
-    };
+    // A4 at roughly 200 dpi. Crisp enough for printing without huge PDFs.
+    const W=1654,H=2339;
+    const sx=W/210,sy=H/297;
+    const X=mm=>mm*sx,Y=mm=>mm*sy;
+    const margin=X(12.5);
 
-    const teamRoleMap=TEAMS.map(team=>({
-      ...team,
-      roleObjects:team.roles.map(name=>roleFor(name))
-    }));
-
-    plan.byShip.forEach((shipPlan,pageIndex)=>{
-      if(pageIndex>0)pdf.addPage();
-
+    for(let pageIndex=0;pageIndex<plan.byShip.length;pageIndex++){
+      const shipPlan=plan.byShip[pageIndex];
       const ship=shipPlan.ship;
       const shipIndex=(activeMission.ships||[]).findIndex(s=>s.id===ship.id);
       const shipName=displayShip(ship,shipIndex);
       const assignedCount=shipPlan.assignments.length;
       const shipImage=shipImages[shipBadgeUrl(ship)]||null;
-      const shuttleOperational=shuttleActiveForCount(assignedCount) ||
-        shipPlan.assignments.some(a=>roleFor(a.role)?.team==="shuttle");
+      const shuttleNormallyAvailable=shuttleActiveForCount(assignedCount);
+      const deploymentCode=String(activeMission.id||"").slice(0,8).toUpperCase()||"LOCAL";
 
-      // Paper and branded masthead.
-      pdf.setFillColor(252,253,254);
-      pdf.rect(0,0,pageW,pageH,"F");
-      pdf.setFillColor(...deepNavy);
-      pdf.rect(0,0,pageW,61,"F");
-      pdf.setFillColor(...navy);
-      pdf.rect(0,0,6.5,61,"F");
-      pdf.setFillColor(...gold);
-      pdf.rect(6.5,0,1.2,61,"F");
+      const canvas=document.createElement("canvas");
+      canvas.width=W;canvas.height=H;
+      const ctx=canvas.getContext("2d",{alpha:false});
+      ctx.imageSmoothingEnabled=true;
+      ctx.imageSmoothingQuality="high";
 
+      // Background.
+      ctx.fillStyle="#F5F8FA";ctx.fillRect(0,0,W,H);
+      const paperGlow=ctx.createLinearGradient(0,0,W,H);
+      paperGlow.addColorStop(0,"rgba(65,211,235,.055)");
+      paperGlow.addColorStop(.48,"rgba(255,255,255,0)");
+      paperGlow.addColorStop(1,"rgba(157,111,220,.045)");
+      ctx.fillStyle=paperGlow;ctx.fillRect(0,0,W,H);
+      drawCircuitDecoration(ctx,W,H);
+
+      // Header field.
+      const headerH=Y(58);
+      const headerGrad=ctx.createLinearGradient(0,0,W,headerH);
+      headerGrad.addColorStop(0,"#04101E");
+      headerGrad.addColorStop(.55,"#071D31");
+      headerGrad.addColorStop(1,shipName.toLowerCase()==="havock"?"#211B43":"#08253C");
+      ctx.fillStyle=headerGrad;ctx.fillRect(0,0,W,headerH);
+      ctx.fillStyle="#F2BC48";ctx.fillRect(0,0,X(1.5),headerH);
+      ctx.fillStyle="#41D3EB";ctx.fillRect(X(1.5),0,X(.55),headerH);
+
+      // Sci-fi grid / scanner marks in masthead.
+      ctx.save();
+      ctx.strokeStyle="rgba(65,211,235,.10)";ctx.lineWidth=1;
+      for(let x=X(10);x<W;x+=X(14)){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,headerH);ctx.stroke();}
+      for(let y=Y(8);y<headerH;y+=Y(8)){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+      ctx.restore();
+      drawHudCorners(ctx,X(7),Y(5),W-X(14),headerH-Y(10),"rgba(65,211,235,.55)",X(4),2);
+
+      // Brand banner uses the app's own art.
       if(brandBanner){
-        try{pdf.addImage(brandBanner,"PNG",12,4,118,39.4,undefined,"FAST");}catch{}
+        const maxW=X(116),maxH=Y(34);
+        const ratio=Math.min(maxW/brandBanner.width,maxH/brandBanner.height);
+        ctx.drawImage(brandBanner,X(10),Y(3.5),brandBanner.width*ratio,brandBanner.height*ratio);
       }else{
-        drawText("INTERSTELLAR",13,19,18,"bold",white);
-        drawText("DEPLOYMENT PLANNER",13,27,9,"bold",cyan);
+        drawCanvasText(ctx,"INTERSTELLAR",X(12),Y(17),{size:86,weight:"800",family:"Orbitron",colour:"#F7FBFE"});
+        drawCanvasText(ctx,"DEPLOYMENT PLANNER",X(12),Y(26),{size:38,weight:"700",family:"Orbitron",colour:"#41D3EB"});
       }
 
-      // Ship identity block.
+      // Ship crest / fallback sci-fi badge.
       if(shipImage){
-        try{pdf.addImage(shipImage,"WEBP",171,7,21,21,undefined,"FAST");}
-        catch{
-          try{pdf.addImage(shipImage,"PNG",171,7,21,21,undefined,"FAST");}catch{}
-        }
-      }else if(brandIcon){
-        try{pdf.addImage(brandIcon,"PNG",173,8,18,18,undefined,"FAST");}catch{}
+        const r=X(11),cx=W-X(22),cy=Y(17);
+        ctx.save();ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.clip();
+        const ratio=Math.max((r*2)/shipImage.width,(r*2)/shipImage.height);
+        const dw=shipImage.width*ratio,dh=shipImage.height*ratio;
+        ctx.drawImage(shipImage,cx-dw/2,cy-dh/2,dw,dh);ctx.restore();
+        ctx.beginPath();ctx.arc(cx,cy,r+4,0,Math.PI*2);ctx.strokeStyle="rgba(65,211,235,.75)";ctx.lineWidth=3;ctx.stroke();
+      }else{
+        const initials=shipName.toLowerCase()==="takanami"?"TKN":shipName.toLowerCase()==="havock"?"HVK":"UNK";
+        drawHexBadge(ctx,W-X(22),Y(17),X(10),initials,shipName.toLowerCase()==="havock"?"#9D6FDC":"#41D3EB");
       }
-      drawText(shipName,196,34,13,"bold",white,{align:"right"});
-      drawText(`${assignedCount} crew assigned`,196,39.5,8.2,"normal",[182,205,220],{align:"right"});
 
-      // Requested provenance / optimisation line.
-      drawText(
-        "CREW POSITIONS OPTIMISED BY INTERSTELLAR DEPLOYMENT PLANNER",
-        13,48.5,7.2,"bold",gold
-      );
+      drawCanvasText(ctx,`SHIP ${String(shipIndex+1).padStart(2,"0")} // ${shipName.toUpperCase()}`,W-X(10),Y(35.5),{size:39,weight:"800",family:"Orbitron",colour:"#F7FBFE",align:"right"});
+      drawCanvasText(ctx,`${assignedCount} CREW ASSIGNED`,W-X(10),Y(42.5),{size:25,weight:"700",family:"Orbitron",colour:"#AFC7D8",align:"right"});
+      drawCanvasText(ctx,`DEPLOYMENT ID // ${deploymentCode}`,W-X(10),Y(49.5),{size:20,weight:"600",family:"Orbitron",colour:"#688BA3",align:"right"});
 
-      const title=missionTitle(activeMission);
-      const titleSize=title.length>36?12:title.length>26?14:16;
-      drawText(title,13,57,titleSize,"bold",white);
+      // Gold provenance line requested by organiser.
+      drawCanvasText(ctx,"CREW POSITIONS OPTIMISED BY INTERSTELLAR DEPLOYMENT PLANNER",X(12.5),Y(48.8),{size:21,weight:"700",family:"Orbitron",colour:"#F2BC48"});
 
-      // Deployment metadata strip.
-      pdf.setFillColor(239,245,248);
-      pdf.rect(0,61,pageW,13,"F");
-      pdf.setDrawColor(...line);
-      pdf.setLineWidth(.25);
-      pdf.line(0,74,pageW,74);
+      const missionTitleText=missionTitle(activeMission);
+      const missionSize=fitCanvasText(ctx,missionTitleText,X(140),52,31,"800","Orbitron");
+      drawCanvasText(ctx,missionTitleText,X(12.5),Y(56),{size:missionSize,weight:"800",family:"Orbitron",colour:"#F8FBFD"});
 
-      const metaY=68.8;
-      drawText("DATE",13,65.5,6.3,"bold",muted);
-      drawText(dateText(activeMission.date),13,metaY,8.3,"bold",ink);
+      // Metadata rail.
+      const metaTop=Y(58),metaH=Y(18);
+      ctx.fillStyle="#E8F0F5";ctx.fillRect(0,metaTop,W,metaH);
+      ctx.strokeStyle="#CBD9E3";ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(0,metaTop+metaH);ctx.lineTo(W,metaTop+metaH);ctx.stroke();
+      const metadata=[
+        {x:12.5,label:"DATE",value:dateText(activeMission.date)},
+        {x:65,label:"DEPLOYMENT SHIPS",value:deploymentShipSummary(activeMission)},
+        {x:137,label:"TOTAL CREW",value:String(missionPlayers.length)},
+        {x:170,label:"CHOICES",value:activeMission.closed?"CLOSED":"OPEN"}
+      ];
+      for(const item of metadata){
+        drawCanvasText(ctx,item.label,X(item.x),Y(64.4),{size:18,weight:"700",family:"Orbitron",colour:"#718697"});
+        drawCanvasText(ctx,item.value,X(item.x),Y(70.2),{size:28,weight:"700",family:"Rajdhani",colour:item.label==="CHOICES"?(activeMission.closed?"#9B3E4A":"#287F58"):"#172531"});
+      }
 
-      drawText("DEPLOYMENT SHIPS",63,65.5,6.3,"bold",muted);
-      drawText(deploymentShipSummary(activeMission),63,metaY,8.3,"bold",ink);
+      // Manifest heading.
+      const manifestTop=Y(82);
+      drawCanvasText(ctx,`${shipName.toUpperCase()} // CREW MANIFEST`,margin,manifestTop,{size:34,weight:"800",family:"Orbitron",colour:"#071727"});
+      drawCanvasText(ctx,shuttleNormallyAvailable?"FULL STATION GRID ACTIVE":"SHUTTLE ROLES GREYED UNTIL 11 CREW",W-margin,manifestTop,{size:19,weight:"700",family:"Orbitron",colour:shuttleNormallyAvailable?"#168CA0":"#7A8792",align:"right"});
+      ctx.fillStyle="#41D3EB";ctx.fillRect(margin,manifestTop+Y(2.6),W-(margin*2),4);
+      ctx.fillStyle="#F2BC48";ctx.fillRect(margin,manifestTop+Y(2.6),X(25),4);
 
-      drawText("TOTAL CREW",137,65.5,6.3,"bold",muted);
-      drawText(String(missionPlayers.length),137,metaY,8.3,"bold",ink);
-
-      drawText("CHOICES",168,65.5,6.3,"bold",muted);
-      drawText(activeMission.closed?"CLOSED":"OPEN",168,metaY,8.3,"bold",activeMission.closed?[153,57,67]:[40,130,85]);
-
-      let y=82;
-
-      // Ship-level document title.
-      drawText(`${shipName.toUpperCase()} - CREW MANIFEST`,margin,y,11.5,"bold",navy);
-      drawText(
-        shuttleOperational?"ALL STATIONS AVAILABLE":"SHUTTLE STATIONS INACTIVE - AVAILABLE FROM 11 CREW",
-        pageW-margin,y,7.2,"bold",shuttleOperational?cyan:shuttleText,{align:"right"}
-      );
-      pdf.setDrawColor(...cyan);
-      pdf.setLineWidth(0.65);
-      pdf.line(margin,y+3,pageW-margin,y+3);
-      y+=8.5;
-
-      // A very light planner crest watermark behind the roster.
+      // Light watermark seal, based on app icon.
       if(brandIcon){
-        try{
-          const gs=new pdf.GState({opacity:0.035});
-          pdf.setGState(gs);
-          pdf.addImage(brandIcon,"PNG",131,152,58,58,undefined,"FAST");
-          pdf.setGState(new pdf.GState({opacity:1}));
-        }catch{}
+        ctx.save();ctx.globalAlpha=.035;
+        const size=X(68);ctx.drawImage(brandIcon,W-X(82),Y(155),size,size);ctx.restore();
       }
 
-      for(const team of teamRoleMap){
-        let palette=pdfTeamPalette(team.id);
-        const inactiveShuttleTeam=team.id==="shuttle"&&!shuttleOperational;
+      // Team blocks. All 14 stations are always drawn.
+      let y=Y(91);
+      const groupGap=Y(2.0),headH=Y(7.2),rowH=Y(9.0),blockW=W-(margin*2);
+      for(const team of TEAMS){
+        const palette=pdfTeamPalette(team.id);
+        const inactiveTeam=team.id==="shuttle"&&!shuttleNormallyAvailable;
+        const headerFill=inactiveTeam?"#D8E0E6":palette.fill;
+        const headerText=inactiveTeam?"#697783":palette.text;
 
-        if(inactiveShuttleTeam){
-          palette={fill:shuttleGrey,text:shuttleText};
-        }
+        // Outer team frame.
+        const blockH=headH+(team.roles.length*rowH)+Y(2.2);
+        fillRoundRect(ctx,margin,y,blockW,blockH,X(1.6),"rgba(255,255,255,.80)","#C9D8E3",2);
+        drawHudCorners(ctx,margin+3,y+3,blockW-6,blockH-6,inactiveTeam?"rgba(105,119,131,.35)":"rgba(65,211,235,.28)",X(2.6),2);
 
-        pdf.setFillColor(...palette.fill);
-        pdf.roundedRect(margin,y,pageW-(margin*2),7,1.5,1.5,"F");
-        drawText(team.name.toUpperCase(),margin+3,y+4.8,8.3,"bold",palette.text);
+        fillRoundRect(ctx,margin,y,blockW,headH,X(1.4),headerFill,null);
+        drawCanvasText(ctx,team.name.toUpperCase(),margin+X(3.2),y+headH*.57,{size:23,weight:"800",family:"Orbitron",colour:headerText,baseline:"middle"});
+        const teamStatus=inactiveTeam?"NOT IN USE":"STATION GROUP";
+        drawCanvasText(ctx,teamStatus,W-margin-X(3.2),y+headH*.57,{size:17,weight:"700",family:"Orbitron",colour:inactiveTeam?"#697783":palette.text,align:"right",baseline:"middle"});
 
-        if(inactiveShuttleTeam){
-          drawText("NOT IN USE",pageW-margin-3,y+4.8,7.1,"bold",shuttleText,{align:"right"});
-        }
-        y+=8.5;
-
-        // Always print every station. Only unavailable shuttle rows are greyed.
-        for(const roleObj of team.roleObjects){
-          const role=roleObj.name;
+        y+=headH+Y(1.1);
+        for(const role of team.roles){
           const assignment=assignmentForRole(shipPlan,role);
-          const active=(shipPlan.allowed||[]).includes(role);
-          const inactiveShuttle=team.id==="shuttle"&&!active&&!assignment;
-          const value=assignment?.name || (inactiveShuttle?"NOT IN USE":"To be decided");
+          const forcedInactiveAssignment=team.id==="shuttle"&&!shuttleNormallyAvailable&&Boolean(assignment);
+          const inactiveRow=team.id==="shuttle"&&!shuttleNormallyAvailable&&!assignment;
+          const rowFill=inactiveRow?"#E4E9ED":forcedInactiveAssignment?"#F4EEFC":"#F9FBFC";
+          const edge=inactiveRow?"#B6C0C8":forcedInactiveAssignment?"#9D6FDC":palette.fill;
+          const roleColour=inactiveRow?"#7E8A94":"#1B2B38";
+          const valueColour=inactiveRow?"#8B969F":forcedInactiveAssignment?"#593B86":"#071727";
+          const value=assignment?.name||(inactiveRow?"NOT IN USE":"To be decided");
 
-          pdf.setFillColor(...(inactiveShuttle?shuttleGrey:[255,255,255]));
-          pdf.setDrawColor(...line);
-          pdf.setLineWidth(0.3);
-          pdf.roundedRect(margin,y,pageW-(margin*2),7.8,1,1,"FD");
-
-          drawText(role,margin+3,y+5.05,8.8,"bold",inactiveShuttle?shuttleText:ink);
-          drawText(
-            value,
-            pageW-margin-3,y+5.05,8.8,
-            assignment?"bold":"normal",
-            inactiveShuttle?shuttleText:(assignment?ink:muted),
-            {align:"right"}
-          );
-          y+=8.7;
+          fillRoundRect(ctx,margin+X(2),y,blockW-X(4),rowH-Y(.8),X(.9),rowFill,"#D3DEE6",1.5);
+          ctx.fillStyle=edge;ctx.fillRect(margin+X(2),y,X(.8),rowH-Y(.8));
+          drawCanvasText(ctx,role,margin+X(5.2),y+(rowH-Y(.8))/2,{size:29,weight:"700",family:"Rajdhani",colour:roleColour,baseline:"middle"});
+          drawCanvasText(ctx,value,W-margin-X(5.2),y+(rowH-Y(.8))/2,{size:30,weight:assignment?"700":"600",family:assignment?"Orbitron":"Rajdhani",colour:valueColour,align:"right",baseline:"middle"});
+          if(forcedInactiveAssignment){
+            drawCanvasText(ctx,"LOCKED OVERRIDE",W-margin-X(5.2),y+Y(7.2),{size:13,weight:"700",family:"Orbitron",colour:"#9D6FDC",align:"right"});
+          }
+          y+=rowH;
         }
-        y+=1.7;
+        y+=groupGap;
       }
 
-      // Branded footer/seal.
-      pdf.setDrawColor(...line);
-      pdf.setLineWidth(0.3);
-      pdf.line(margin,pageH-15,pageW-margin,pageH-15);
+      // Footer / system identity.
+      const footerY=H-Y(15);
+      ctx.strokeStyle="#C9D8E3";ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(margin,footerY);ctx.lineTo(W-margin,footerY);ctx.stroke();
+      if(brandIcon){ctx.drawImage(brandIcon,margin,H-Y(12.3),X(8),X(8));}
+      drawCanvasText(ctx,"INTERSTELLAR DEPLOYMENT PLANNER",margin+(brandIcon?X(10):0),H-Y(8.8),{size:20,weight:"800",family:"Orbitron",colour:"#071727"});
+      drawCanvasText(ctx,"SYSTEM-GENERATED CREW MANIFEST",margin+(brandIcon?X(10):0),H-Y(5.2),{size:16,weight:"700",family:"Orbitron",colour:"#728596"});
+      const generated=new Intl.DateTimeFormat("en-GB",{dateStyle:"medium",timeStyle:"short"}).format(new Date());
+      drawCanvasText(ctx,`GENERATED ${generated.toUpperCase()}`,W-margin,H-Y(8.8),{size:16,weight:"700",family:"Orbitron",colour:"#728596",align:"right"});
+      drawCanvasText(ctx,`PAGE ${pageIndex+1} / ${plan.byShip.length}`,W-margin,H-Y(5.2),{size:16,weight:"700",family:"Orbitron",colour:"#728596",align:"right"});
 
-      if(brandIcon){
-        try{pdf.addImage(brandIcon,"PNG",margin,pageH-12.7,8,8,undefined,"FAST");}catch{}
-      }
-      drawText("INTERSTELLAR DEPLOYMENT PLANNER",brandIcon?margin+10:margin,pageH-9.1,7.5,"bold",navy);
-      drawText("Generated crew manifest",brandIcon?margin+10:margin,pageH-5.6,6.8,"normal",muted);
-
-      drawText(
-        `Generated ${new Intl.DateTimeFormat("en-GB",{dateStyle:"medium",timeStyle:"short"}).format(new Date())}`,
-        pageW-margin,pageH-9.1,7.1,"normal",muted,{align:"right"}
-      );
-      drawText(`Page ${pageIndex+1} of ${plan.byShip.length}`,pageW-margin,pageH-5.6,6.8,"normal",muted,{align:"right"});
-    });
+      const img=canvas.toDataURL("image/jpeg",.94);
+      if(pageIndex>0)pdf.addPage();
+      pdf.addImage(img,"JPEG",0,0,210,297,undefined,"FAST");
+    }
 
     pdf.save(deploymentPdfFilename(activeMission));
     setMessage(message,"Themed crew PDF downloaded.","success");
@@ -604,12 +690,10 @@ async function generateCrewPdf(){
     console.error("PDF generation failed",ex);
     setMessage(message,`Could not generate PDF: ${ex.message||ex}`,"error");
   }finally{
-    if(button){
-      button.disabled=false;
-      button.textContent=oldText||"Download crew PDF";
-    }
+    if(button){button.disabled=false;button.textContent=oldText||"Download crew PDF";}
   }
 }
+
 function renderManagerShell(){const m=activeMission;main.innerHTML=`<div class="page-head"><div><button id="backDashboard" class="btn ghost tiny">← Dashboard</button><div class="eyebrow" style="margin-top:10px">Crew management</div><h1>${esc(missionTitle(m))}</h1><p class="sub">${esc(dateText(m.date))}</p></div><div class="actions"><button id="downloadCrewPdfBtn" class="btn primary">Download crew PDF</button><button id="editMissionBtn" class="btn ghost">Deployment setup</button><button id="closeChoicesBtn" class="btn ${m.closed?"success":"danger"}">${m.closed?"Reopen choices":"Close choices"}</button></div></div><div class="grid two"><aside><section class="panel sticky"><h2>Player link</h2><p class="sub">Send this link to everyone who should add their preferences.</p><div class="share-box"><input id="managerShareLink" readonly value="${esc(buildMissionLink(m.id))}"><button id="managerCopy" class="btn primary tiny">Copy link</button></div><div class="stat-row" id="managerStats"></div><div class="actions"><button id="addPlayerBtn" class="btn ghost">Add someone</button></div><div id="managerMessage" class="message"></div></section><section class="panel"><h2>Responses</h2><div id="responseList" class="response-list"></div></section></aside><section class="panel"><div class="eyebrow">Live suggestion</div><h2>Current crew plan</h2><p class="sub">The whole suggestion is recalculated whenever a preference changes. Fixed organiser choices are worked around automatically.</p><div id="managerPlan"></div></section></div>`;$("#backDashboard").onclick=()=>{clearUnsubs();currentRole==="admin"?renderAdminDashboard():renderOrganiserDashboard();};$("#downloadCrewPdfBtn").onclick=generateCrewPdf;$("#editMissionBtn").onclick=()=>openMissionSetup(activeMission);$("#managerCopy").onclick=()=>copyMissionLink(m.id,$("#managerCopy"));$("#closeChoicesBtn").onclick=async()=>{await updateDoc(doc(db,"missions",m.id),{closed:!activeMission.closed,updatedAt:serverTimestamp()});};$("#addPlayerBtn").onclick=()=>openOrganiserPlayerEditor();}
 function renderManagerState(){if(!activeMission||!$("#managerPlan"))return;const cap=(activeMission.ships?.length||1)*MAX_PER_SHIP,plan=computePlan(missionPlayers,activeMission);$("#closeChoicesBtn").textContent=activeMission.closed?"Reopen choices":"Close choices";$("#closeChoicesBtn").className=`btn ${activeMission.closed?"success":"danger"}`;$("#managerStats").innerHTML=`<span class="stat"><b>${missionPlayers.length}</b> responses</span><span class="stat"><b>${cap}</b> places</span><span class="stat"><b>${plan.metrics.first}</b> first choices</span>${plan.metrics.avoid?`<span class="stat"><b>${plan.metrics.avoid}</b> last-resort roles</span>`:""}`;$("#managerPlan").innerHTML=renderPlan(plan,activeMission,{organiser:true});$("#responseList").innerHTML=missionPlayers.length?[...missionPlayers].sort(prioritySort).map(p=>responseRow(p)).join(""):`<p class="sub">No responses yet.</p>`;document.querySelectorAll("[data-edit-player]").forEach(b=>b.onclick=()=>openOrganiserPlayerEditor(missionPlayers.find(p=>p.id===b.dataset.editPlayer)));document.querySelectorAll("[data-delete-player]").forEach(b=>b.onclick=()=>deleteOrganiserPlayer(b.dataset.deletePlayer));}
 function responseRow(p){const ov=getOverride(activeMission,p.id);const pref=(p.prefs||[]).map(x=>x===FLEX?"No preference":x).join(" → ");const ship=p.shipPref?(activeMission.ships||[]).findIndex(s=>s.id===p.shipPref):-1;return `<div class="response-row"><div class="response-top"><div><div class="response-name">${esc(p.name)}</div><div class="response-meta">${ship>=0?`Ship: ${esc(displayShip(activeMission.ships[ship],ship))}`:"Ship: no preference"}<br>${esc(pref)}</div>${ov?.role?`<div class="fixed-note">Locked: ${esc(ov.role)}${ov.shipId?` · ${esc(displayShip(activeMission.ships.find(s=>s.id===ov.shipId),activeMission.ships.findIndex(s=>s.id===ov.shipId)))}`:" · either ship"}</div>`:""}</div><div class="actions"><button class="btn ghost tiny" data-edit-player="${p.id}">Edit</button><button class="btn danger tiny" data-delete-player="${p.id}">Delete</button></div></div></div>`;}
