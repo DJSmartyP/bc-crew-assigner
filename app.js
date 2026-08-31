@@ -56,6 +56,10 @@ function roleFor(name){return ROLES.find(r=>r.name===name);}
 function teamClass(team){return `team-${team}`;}
 function displayShip(ship,index){return ship?.name?.trim() || `Ship ${index+1}`;}
 function missionTitle(m){return m?.title?.trim() || "Crew Deployment";}
+function deploymentShipSummary(m){
+  const names=(m?.ships||[]).map((s,i)=>displayShip(s,i));
+  return names.length?names.join(" + "):"Unknown";
+}
 function dateText(v){if(!v)return "Date not set";const [y,m,d]=String(v).split("-").map(Number);if(!y||!m||!d)return v;return new Intl.DateTimeFormat("en-GB",{day:"numeric",month:"long",year:"numeric",timeZone:"UTC"}).format(new Date(Date.UTC(y,m-1,d)));}
 function timestampMs(value){if(!value)return Number.MAX_SAFE_INTEGER;if(typeof value.toMillis==="function")return value.toMillis();if(Number.isFinite(value.seconds))return value.seconds*1000+(value.nanoseconds||0)/1e6;const n=Date.parse(value);return Number.isFinite(n)?n:Number.MAX_SAFE_INTEGER;}
 function prioritySort(a,b){return timestampMs(a.priorityAt||a.createdAt)-timestampMs(b.priorityAt||b.createdAt)||String(a.id).localeCompare(String(b.id));}
@@ -293,7 +297,7 @@ function renderAccountLanding(){
 function friendlyAuthError(ex){const code=ex?.code||"";if(code.includes("invalid-credential"))return "That email or password wasn't recognised.";if(code.includes("invalid-email"))return "Check the email address.";if(code.includes("expired-action-code"))return "That sign-in link has expired. Request a new one.";if(code.includes("invalid-action-code"))return "That sign-in link is no longer valid. Request a new one.";if(code.includes("unauthorized-domain"))return "This website domain is not yet authorised in Firebase Authentication.";if(code.includes("operation-not-allowed"))return "Email-link sign in is not enabled in Firebase yet.";return ex?.message||"Something went wrong. Please try again.";}
 async function ensureOrganiserProfileAndRender(){const ref=doc(db,"profiles",currentUser.uid),snap=await getDoc(ref);if(!snap.exists())await setDoc(ref,{name:currentUser.email?.split("@")[0]||"Organiser",email:currentUser.email||"",role:"organiser",createdAt:serverTimestamp()});await renderOrganiserDashboard();}
 async function renderOrganiserDashboard(){clearUnsubs();const q=query(collection(db,"missions"),where("ownerUid","==",currentUser.uid));const snap=await getDocs(q);const missions=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(a.date||"").localeCompare(String(b.date||"")));main.innerHTML=`<div class="page-head"><div><div class="eyebrow">Organiser dashboard</div><h1>My deployments</h1><p class="sub">Create a deployment, share its player link, then manage the crew as preferences arrive.</p></div><button id="createMissionBtn" class="btn primary">Create deployment</button></div><div id="missionCards" class="grid cards">${missions.length?missions.map(m=>missionCard(m,false)).join(""):`<section class="empty-state"><h2>No deployments yet</h2><p>Create your first deployment to get a player preference link.</p></section>`}</div>`;$("#createMissionBtn").onclick=()=>openMissionSetup();document.querySelectorAll("[data-manage]").forEach(b=>b.onclick=()=>openMissionManager(b.dataset.manage));document.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>copyMissionLink(b.dataset.copy,b));}
-function missionCard(m,admin){return `<section class="panel mission-card"><div class="mission-date">${esc(dateText(m.date))}</div><h2>${esc(missionTitle(m))}</h2><p class="sub">${m.shipCount||m.ships?.length||1} ship${(m.shipCount||m.ships?.length||1)===1?"":"s"}</p><div class="mission-meta"><span class="pill ${m.closed?"closed":"open"}">${m.closed?"Choices closed":"Choices open"}</span>${admin?`<span class="pill organiser">${esc(m.ownerName||"Organiser")}</span>`:""}</div><div class="share-box"><input readonly value="${esc(buildMissionLink(m.id))}" aria-label="Player link"><button class="btn ghost tiny" data-copy="${m.id}">Copy link</button></div><div class="actions"><button class="btn primary" data-manage="${m.id}">Manage crew</button>${admin?`<button class="btn danger" data-delete-mission="${m.id}">Delete</button>`:""}</div></section>`;}
+function missionCard(m,admin){return `<section class="panel mission-card"><div class="mission-date">${esc(dateText(m.date))}</div><h2>${esc(missionTitle(m))}</h2><p class="sub">${esc(deploymentShipSummary(m))}${Number.isFinite(m.responseCount)?` · ${m.responseCount} response${m.responseCount===1?"":"s"}`:""}</p><div class="mission-meta"><span class="pill ${m.closed?"closed":"open"}">${m.closed?"Choices closed":"Choices open"}</span>${admin?`<span class="pill organiser">${esc(m.ownerName||"Organiser")}</span>`:""}</div><div class="share-box"><input readonly value="${esc(buildMissionLink(m.id))}" aria-label="Player link"><button class="btn ghost tiny" data-copy="${m.id}">Copy link</button></div><div class="actions"><button class="btn primary" data-manage="${m.id}">Manage crew</button>${admin?`<button class="btn danger" data-delete-mission="${m.id}">Delete</button>`:""}</div></section>`;}
 function buildMissionLink(id){return `${location.origin}${location.pathname}?m=${encodeURIComponent(id)}`;}
 async function copyMissionLink(id,button){const text=buildMissionLink(id);try{await navigator.clipboard.writeText(text);const old=button.textContent;button.textContent="Copied";setTimeout(()=>button.textContent=old,1500);}catch{prompt("Copy this player link:",text);}}
 function openMissionSetup(existing=null){
@@ -345,7 +349,144 @@ function openOrganiserPlayerEditor(player=null){const ov=player?getOverride(acti
     try{const ref=doc(db,"missions",activeMission.id,"players",id);if(player)await setDoc(ref,{...payload,updatedAt:serverTimestamp(),priorityAt:preferenceChanged(player,payload)?serverTimestamp():(player.priorityAt||player.createdAt||serverTimestamp()),createdAt:player.createdAt||serverTimestamp()},{merge:true});else await setDoc(ref,{...payload,source:"organiser",createdAt:serverTimestamp(),priorityAt:serverTimestamp(),updatedAt:serverTimestamp()});const overrides={...(activeMission.overrides||{})};if(fixedRole)overrides[id]={role:fixedRole,shipId:fixedShip||""};else delete overrides[id];await updateDoc(doc(db,"missions",activeMission.id),{overrides,updatedAt:serverTimestamp()});closeModal();}catch(ex){setMessage($("#orgPlayerMessage"),ex.message,"error");}};}
 function preferenceChanged(old,p){return old.shipPref!==p.shipPref||JSON.stringify(old.prefs||[])!==JSON.stringify(p.prefs)||JSON.stringify([...(old.dislikes||[])].sort())!==JSON.stringify([...p.dislikes].sort());}
 
-async function renderAdminDashboard(){clearUnsubs();const [missionSnap,profileSnap]=await Promise.all([getDocs(collection(db,"missions")),getDocs(collection(db,"profiles"))]);const profiles=new Map(profileSnap.docs.map(d=>[d.id,{id:d.id,...d.data()}]));const missions=missionSnap.docs.map(d=>{const x={id:d.id,...d.data()};x.ownerName=profiles.get(x.ownerUid)?.name||x.ownerName||"Organiser";return x;}).sort((a,b)=>String(a.date||"").localeCompare(String(b.date||"")));main.innerHTML=`<div class="page-head"><div><div class="eyebrow">Administrator</div><h1>All deployments</h1><p class="sub">Create your own deployments or open and manage any organiser's deployment.</p></div><button id="adminCreateMissionBtn" class="btn primary">Create deployment</button></div><div class="stat-row"><span class="stat"><b>${missions.length}</b> deployments</span><span class="stat"><b>${profiles.size}</b> organisers</span></div><div class="grid cards">${missions.length?missions.map(m=>missionCard(m,true)).join(""):`<section class="empty-state"><h2>No deployments yet</h2><p>Create a deployment yourself or wait for an organiser to create one.</p></section>`}</div>`;$("#adminCreateMissionBtn").onclick=()=>openMissionSetup();document.querySelectorAll("[data-manage]").forEach(b=>b.onclick=()=>openMissionManager(b.dataset.manage));document.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>copyMissionLink(b.dataset.copy,b));document.querySelectorAll("[data-delete-mission]").forEach(b=>b.onclick=async()=>{if(confirm("Delete this deployment and all player responses?"))await deleteMissionCascade(b.dataset.deleteMission);});}
+async function renderAdminDashboard(){
+  clearUnsubs();
+
+  const [missionSnap,profileSnap]=await Promise.all([
+    getDocs(collection(db,"missions")),
+    getDocs(collection(db,"profiles"))
+  ]);
+
+  const profiles=profileSnap.docs
+    .map(d=>({id:d.id,...d.data()}))
+    .filter(p=>p.role==="organiser")
+    .sort((a,b)=>String(a.email||a.name||"").localeCompare(String(b.email||b.name||"")));
+
+  let missions=missionSnap.docs.map(d=>({id:d.id,...d.data()}));
+
+  // Admin use is low-volume, so fetching response counts here keeps the
+  // dashboard immediately useful without changing the stored deployment shape.
+  const responseCounts=await Promise.all(
+    missions.map(async m=>{
+      try{
+        const ps=await getDocs(collection(db,"missions",m.id,"players"));
+        return [m.id,ps.size];
+      }catch{
+        return [m.id,null];
+      }
+    })
+  );
+  const countMap=new Map(responseCounts);
+
+  const profileMap=new Map(profiles.map(p=>[p.id,p]));
+  missions=missions.map(m=>({
+    ...m,
+    ownerName:profileMap.get(m.ownerUid)?.name||m.ownerName||"Organiser",
+    ownerEmail:profileMap.get(m.ownerUid)?.email||"",
+    responseCount:countMap.get(m.id)
+  })).sort((a,b)=>String(a.date||"").localeCompare(String(b.date||"")));
+
+  const organiserCards=profiles.length
+    ?profiles.map(p=>{
+      const owned=missions.filter(m=>m.ownerUid===p.id);
+      const label=p.name||p.email||"Organiser";
+      const deployments=owned.length
+        ?owned.map(m=>`
+          <div class="admin-organiser-deployment">
+            <div class="admin-organiser-deployment-main">
+              <div>
+                <b>${esc(missionTitle(m))}</b>
+                <span>${esc(dateText(m.date))} · ${esc(deploymentShipSummary(m))}</span>
+              </div>
+              <div class="mission-meta">
+                <span class="pill ${m.closed?"closed":"open"}">${m.closed?"Closed":"Open"}</span>
+                <span class="pill">${m.responseCount??"?"} response${m.responseCount===1?"":"s"}</span>
+              </div>
+            </div>
+            <div class="actions">
+              <button class="btn primary tiny" data-manage="${m.id}">Manage</button>
+              <button class="btn ghost tiny" data-copy="${m.id}">Copy player link</button>
+            </div>
+          </div>`).join("")
+        :`<p class="sub">No deployments created yet.</p>`;
+
+      return `
+        <details class="panel admin-organiser-card">
+          <summary>
+            <div>
+              <div class="eyebrow">Organiser</div>
+              <h2>${esc(label)}</h2>
+              <div class="admin-organiser-email">${esc(p.email||"No email stored")}</div>
+            </div>
+            <div class="admin-organiser-summary-meta">
+              <span class="stat"><b>${owned.length}</b> deployment${owned.length===1?"":"s"}</span>
+              <span class="admin-view-hint">View deployments</span>
+            </div>
+          </summary>
+          <div class="admin-organiser-details">
+            <div class="admin-organiser-uid"><span>UID</span><code>${esc(p.id)}</code></div>
+            <div class="admin-organiser-deployments">${deployments}</div>
+          </div>
+        </details>`;
+    }).join("")
+    :`<section class="empty-state"><h2>No organisers yet</h2><p>Organisers will appear here after they first sign in with a magic link.</p></section>`;
+
+  main.innerHTML=`
+    <div class="page-head">
+      <div>
+        <div class="eyebrow">Administrator</div>
+        <h1>Control centre</h1>
+        <p class="sub">See organiser accounts, their deployments, and every deployment across the planner.</p>
+      </div>
+      <button id="adminCreateMissionBtn" class="btn primary">Create deployment</button>
+    </div>
+
+    <div class="stat-row">
+      <span class="stat"><b>${profiles.length}</b> organisers</span>
+      <span class="stat"><b>${missions.length}</b> deployments</span>
+      <span class="stat"><b>${missions.reduce((n,m)=>n+(Number.isFinite(m.responseCount)?m.responseCount:0),0)}</b> total responses</span>
+    </div>
+
+    <section class="admin-section">
+      <div class="admin-section-head">
+        <div>
+          <div class="eyebrow">Accounts</div>
+          <h2>Organisers</h2>
+          <p class="sub">Open an organiser to see the deployments attached to their account.</p>
+        </div>
+      </div>
+      <div class="admin-organiser-list">${organiserCards}</div>
+    </section>
+
+    <section class="admin-section">
+      <div class="admin-section-head">
+        <div>
+          <div class="eyebrow">Global view</div>
+          <h2>All deployments</h2>
+          <p class="sub">Every deployment, including ones created by the administrator.</p>
+        </div>
+      </div>
+      <div class="grid cards">
+        ${missions.length?missions.map(m=>missionCard(m,true)).join(""):`<section class="empty-state"><h2>No deployments yet</h2><p>Create a deployment yourself or wait for an organiser to create one.</p></section>`}
+      </div>
+    </section>`;
+
+  $("#adminCreateMissionBtn").onclick=()=>openMissionSetup();
+
+  document.querySelectorAll("[data-manage]").forEach(b=>{
+    b.onclick=()=>openMissionManager(b.dataset.manage);
+  });
+  document.querySelectorAll("[data-copy]").forEach(b=>{
+    b.onclick=()=>copyMissionLink(b.dataset.copy,b);
+  });
+  document.querySelectorAll("[data-delete-mission]").forEach(b=>{
+    b.onclick=async()=>{
+      if(confirm("Delete this deployment and all player responses?")){
+        await deleteMissionCascade(b.dataset.deleteMission);
+      }
+    };
+  });
+}
 async function deleteMissionCascade(id){const ps=await getDocs(collection(db,"missions",id,"players"));const batch=writeBatch(db);ps.docs.forEach(d=>batch.delete(d.ref));batch.delete(doc(db,"missions",id));await batch.commit();renderAdminDashboard();}
 
 function localProfilesKey(missionId){return `bcCrewProfiles:${missionId}`;}

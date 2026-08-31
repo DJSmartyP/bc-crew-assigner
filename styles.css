@@ -80,3 +80,135 @@ a{color:inherit}.app-shell{width:min(1580px,100%);margin:auto;padding:14px}.topb
 .setup-lock-note span{display:block;color:var(--muted);font-size:14px;line-height:1.35}
 .setup-actions{margin-top:0}
 @media(max-width:650px){.setup-main-fields{grid-template-columns:1fr}.ship-visual-picker{grid-template-columns:repeat(3,1fr)}.visual-ship-card{min-height:105px;padding:9px 5px}.visual-ship-card img,.unknown-ship-icon{width:48px;height:48px}.visual-ship-name{font-size:9px}.setup-heading{padding-right:0}.ship-count-card span{font-size:10px}}
+
+
+/* Admin organiser directory */
+.admin-section{
+  margin-top:22px;
+}
+.admin-section-head{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  align-items:end;
+  margin:0 2px 10px;
+}
+.admin-section-head h2{
+  margin:3px 0 2px;
+}
+.admin-organiser-list{
+  display:grid;
+  gap:10px;
+}
+.admin-organiser-card{
+  padding:0;
+}
+.admin-organiser-card>summary{
+  list-style:none;
+  display:flex;
+  justify-content:space-between;
+  gap:16px;
+  align-items:center;
+  padding:15px 16px;
+  cursor:pointer;
+}
+.admin-organiser-card>summary::-webkit-details-marker{
+  display:none;
+}
+.admin-organiser-card>summary:hover{
+  background:rgba(112,221,245,.035);
+}
+.admin-organiser-card h2{
+  margin:4px 0 1px;
+  font-size:18px;
+}
+.admin-organiser-email{
+  color:var(--muted);
+  font-size:15px;
+}
+.admin-organiser-summary-meta{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+}
+.admin-view-hint{
+  font:700 9px "Orbitron";
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:var(--cyan);
+}
+.admin-organiser-card[open] .admin-view-hint{
+  color:var(--gold);
+}
+.admin-organiser-details{
+  padding:0 16px 16px;
+  border-top:1px solid rgba(112,221,245,.1);
+}
+.admin-organiser-uid{
+  display:flex;
+  gap:9px;
+  align-items:center;
+  margin:12px 0;
+  color:var(--muted);
+  min-width:0;
+}
+.admin-organiser-uid span{
+  font:700 9px "Orbitron";
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+.admin-organiser-uid code{
+  color:#c9d8e6;
+  font-size:12px;
+  overflow-wrap:anywhere;
+}
+.admin-organiser-deployments{
+  display:grid;
+  gap:8px;
+}
+.admin-organiser-deployment{
+  border:1px solid rgba(112,221,245,.12);
+  border-radius:10px;
+  background:#071727;
+  padding:10px;
+}
+.admin-organiser-deployment-main{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  align-items:flex-start;
+}
+.admin-organiser-deployment-main b{
+  display:block;
+  font:700 14px "Orbitron";
+  color:var(--text);
+}
+.admin-organiser-deployment-main span{
+  display:block;
+  color:var(--muted);
+  font-size:14px;
+  margin-top:3px;
+}
+.admin-organiser-deployment-main .mission-meta{
+  margin:0;
+  justify-content:flex-end;
+}
+.admin-organiser-deployment-main .mission-meta .pill{
+  display:inline-flex;
+  margin:0 0 4px 4px;
+}
+@media(max-width:650px){
+  .admin-organiser-card>summary,
+  .admin-organiser-deployment-main{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+  .admin-organiser-summary-meta{
+    justify-content:flex-start;
+  }
+  .admin-organiser-deployment-main .mission-meta{
+    justify-content:flex-start;
+  }
+}
