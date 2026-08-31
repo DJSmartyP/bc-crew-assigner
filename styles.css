@@ -47,3 +47,36 @@ a{color:inherit}.app-shell{width:min(1580px,100%);margin:auto;padding:14px}.topb
   line-height:1.4;
 }
 .shuttle-fallback-note b{color:#c8b8ff}
+
+
+/* Deployment setup redesign */
+.modal{width:min(760px,100%)}
+.setup-heading{padding-right:70px;margin-bottom:14px}
+.setup-heading h2{margin:4px 0 5px;font-size:26px}
+.deployment-setup-form{display:grid;gap:14px}
+.setup-main-fields{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(210px,.7fr);gap:11px}
+.setup-main-fields .field{margin:0}
+.setup-section{padding:13px;border:1px solid rgba(112,221,245,.13);border-radius:13px;background:rgba(4,19,33,.52)}
+.setup-section-head{display:flex;justify-content:space-between;gap:12px;margin-bottom:10px}
+.ship-count-choice{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.ship-count-card{display:flex;align-items:center;gap:10px;min-height:61px;padding:10px 13px;border:1px solid rgba(112,221,245,.18);border-radius:11px;background:#071a2c;color:var(--text);cursor:pointer;text-align:left}
+.ship-count-card b{display:grid;place-items:center;width:34px;height:34px;border-radius:9px;background:#0c2a44;color:var(--cyan);font:800 17px "Orbitron"}
+.ship-count-card span{font:700 12px "Orbitron";letter-spacing:.04em}
+.ship-count-card.selected{border-color:var(--gold);background:linear-gradient(180deg,rgba(239,199,111,.13),rgba(7,26,44,.92));box-shadow:inset 0 0 0 1px rgba(239,199,111,.12)}
+.ship-count-card.selected b{background:var(--gold);color:#172337}
+.ship-visual-picker{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.visual-ship-card{position:relative;display:grid;justify-items:center;align-content:center;gap:7px;min-height:128px;padding:13px 10px;border:1px solid rgba(112,221,245,.18);border-radius:13px;background:linear-gradient(180deg,#082038,#061625);color:var(--text);cursor:pointer;transition:.15s ease}
+.visual-ship-card:hover{transform:translateY(-1px);border-color:rgba(112,221,245,.5)}
+.visual-ship-card img{width:64px;height:64px;object-fit:contain;filter:drop-shadow(0 0 10px rgba(112,221,245,.22))}
+.visual-ship-card.ship-havock img{filter:drop-shadow(0 0 10px rgba(182,156,255,.28))}
+.visual-ship-card.selected{border-color:var(--gold);box-shadow:inset 0 0 0 1px rgba(239,199,111,.15),0 0 18px rgba(239,199,111,.06)}
+.visual-ship-card.locked{cursor:default;opacity:1}
+.visual-ship-name{font:700 12px "Orbitron";letter-spacing:.07em;text-transform:uppercase}
+.visual-ship-card small{font:700 8px "Orbitron";letter-spacing:.08em;text-transform:uppercase;color:var(--green)}
+.unknown-ship-icon{display:grid;place-items:center;width:64px;height:64px;border:1px dashed #5f7890;border-radius:50%;font:700 28px "Orbitron";color:#7890a5;background:#061421}
+.setup-lock-note{display:grid;grid-template-columns:34px minmax(0,1fr);gap:10px;align-items:start;padding:11px 12px;border:1px solid rgba(239,199,111,.18);border-radius:11px;background:rgba(239,199,111,.055)}
+.setup-lock-note .lock-symbol{display:grid;place-items:center;width:30px;height:30px;border:1px solid rgba(239,199,111,.35);border-radius:8px;color:var(--gold)}
+.setup-lock-note b{display:block;font:700 10px "Orbitron";letter-spacing:.07em;text-transform:uppercase;color:var(--gold);margin-bottom:3px}
+.setup-lock-note span{display:block;color:var(--muted);font-size:14px;line-height:1.35}
+.setup-actions{margin-top:0}
+@media(max-width:650px){.setup-main-fields{grid-template-columns:1fr}.ship-visual-picker{grid-template-columns:repeat(3,1fr)}.visual-ship-card{min-height:105px;padding:9px 5px}.visual-ship-card img,.unknown-ship-icon{width:48px;height:48px}.visual-ship-name{font-size:9px}.setup-heading{padding-right:0}.ship-count-card span{font-size:10px}}
