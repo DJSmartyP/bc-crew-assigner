@@ -212,3 +212,47 @@ a{color:inherit}.app-shell{width:min(1580px,100%);margin:auto;padding:14px}.topb
     justify-content:flex-start;
   }
 }
+
+
+/* Two-ship allocation policy */
+.balance-choice{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:9px;
+}
+.balance-card{
+  display:grid;
+  gap:6px;
+  align-content:start;
+  min-height:122px;
+  padding:13px;
+  text-align:left;
+  border:1px solid rgba(112,221,245,.18);
+  border-radius:12px;
+  background:linear-gradient(180deg,#082038,#061625);
+  color:var(--text);
+  cursor:pointer;
+}
+.balance-card:hover{
+  border-color:rgba(112,221,245,.48);
+  transform:translateY(-1px);
+}
+.balance-card.selected{
+  border-color:var(--gold);
+  box-shadow:inset 0 0 0 1px rgba(239,199,111,.15),0 0 18px rgba(239,199,111,.06);
+}
+.balance-card b{
+  font:700 10px "Orbitron";
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  color:var(--gold);
+}
+.balance-card span{
+  color:var(--muted);
+  font-size:14px;
+  line-height:1.35;
+}
+@media(max-width:650px){
+  .balance-choice{grid-template-columns:1fr}
+  .balance-card{min-height:0}
+}

@@ -99,79 +99,303 @@ function quality(person,role,shuttleActive=true){
   }
   return{kind:"other",rank:0,label:"Other available role"};
 }
-function qScore(q){if(q.kind==="rank"&&q.rank===1)return 0;if(q.kind==="rank"&&q.rank===2)return 100000;if(q.kind==="rank"&&q.rank===3)return 200000;if(q.kind==="flex")return 300000;if(q.kind==="other")return 400000;return 900000000;}
-function stableTie(id,ship,role){let h=2166136261;const s=`${id}|${ship}|${role}`;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}return((h>>>0)%997)*1e-5;}
-function hungarian(a){
-  const n=a.length;if(!n)return[];const m=a[0].length;if(n>m)throw new Error("More crew than available stations.");
-  const u=Array(n+1).fill(0),v=Array(m+1).fill(0),p=Array(m+1).fill(0),way=Array(m+1).fill(0);
-  for(let i=1;i<=n;i++){p[0]=i;let j0=0;const minv=Array(m+1).fill(Infinity),used=Array(m+1).fill(false);do{used[j0]=true;const i0=p[j0];let delta=Infinity,j1=0;for(let j=1;j<=m;j++)if(!used[j]){const cur=a[i0-1][j-1]-u[i0]-v[j];if(cur<minv[j]){minv[j]=cur;way[j]=j0;}if(minv[j]<delta){delta=minv[j];j1=j;}}for(let j=0;j<=m;j++){if(used[j]){u[p[j]]+=delta;v[j]-=delta;}else minv[j]-=delta;}j0=j1;}while(p[j0]!==0);do{const j1=way[j0];p[j0]=p[j1];j0=j1;}while(j0!==0);}
-  const ans=Array(n).fill(-1);for(let j=1;j<=m;j++)if(p[j])ans[p[j]-1]=j-1;return ans;
+const FAIRNESS_BASE=31;
+
+function fairnessBase(q){
+  const B=FAIRNESS_BASE;
+  if(q.kind==="avoid")return B**6+B**4+B**3+B**2+B;
+  if(q.kind==="rank"&&q.rank===1)return 0;
+  if(q.kind==="rank"&&q.rank===2)return B**4;
+  if(q.kind==="rank"&&q.rank===3)return B**4+B**3;
+  if(q.kind==="flex")return B**4+B**3+B**2;
+  return B**4+B**3+B**2+B;
+}
+function qualityTieLevel(q){
+  if(q.kind==="rank")return Math.max(0,q.rank-1);
+  if(q.kind==="flex")return 3;
+  if(q.kind==="other")return 4;
+  return 5;
+}
+function stableTie(id,ship,role){
+  let h=2166136261;
+  const s=`${id}|${ship}|${role}`;
+  for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}
+  return ((h>>>0)%997)*1e-12;
 }
 function getOverride(mission,playerId){return mission?.overrides?.[playerId]||null;}
-function concretePrefs(p){return (p.prefs||[]).filter(x=>x&&x!==FLEX);}
-function stationAvailabilityCost(person,shipId,demand,mission,targetCount=MAX_PER_SHIP){
-  const ov=getOverride(mission,person.id);if(ov?.shipId && ov.shipId!==shipId)return 100000000;
-  const shuttleActive=shuttleActiveForCount(targetCount);
-  const prefs=ov?.role?[ov.role]:concretePrefs(person);
-  let prefCost=3500;
-  for(let i=0;i<prefs.length;i++){
-    const candidates=ov?.role?[prefs[i]]:rolesForPreference(prefs[i],shuttleActive);
-    if(candidates.some(role=>(demand.get(`${shipId}|${role}`)||0)===0)){prefCost=i*1000;break;}
-  }
-  const shipPenalty=person.shipPref&&person.shipPref!==shipId?120:0;
-  return prefCost+shipPenalty;
+
+function normalShuttleActive(count,totalCrew,mission){
+  count=Number(count)||0;
+  totalCrew=Number(totalCrew)||0;
+  const shipCount=mission?.ships?.length||1;
+  if(shipCount<2)return count>=11;
+  if(mission?.balanceShips!==false)return totalCrew>=21&&count>=11;
+  return count>=11;
 }
-function makeShipTargets(n,ships,fixedCounts,players){
-  const prefCount=ships.map(s=>players.filter(p=>p.shipPref===s.id).length);
-  const t=ships.map((s,i)=>Math.min(MAX_PER_SHIP,fixedCounts[i]||0));let left=n-t.reduce((a,b)=>a+b,0);
-  while(left>0){let best=-1;for(let i=0;i<t.length;i++){if(t[i]>=MAX_PER_SHIP)continue;if(best<0||t[i]<t[best]||(t[i]===t[best]&&prefCount[i]>prefCount[best]))best=i;}if(best<0)break;t[best]++;left--;}
-  return t;
+function forcedShipCount(players,mission,shipId){
+  return players.filter(p=>getOverride(mission,p.id)?.shipId===shipId).length;
 }
-function allocateShips(players,mission){
-  const ships=mission.ships||[];const groups=ships.map(()=>[]),fixedCounts=ships.map(()=>0),unassigned=[];
-  const order=[...players].sort(prioritySort);
-  for(const p of order){const ov=getOverride(mission,p.id);if(ov?.shipId){const idx=ships.findIndex(s=>s.id===ov.shipId);if(idx>=0&&fixedCounts[idx]<MAX_PER_SHIP){groups[idx].push(p);fixedCounts[idx]++;continue;}}unassigned.push(p);}
-  const targets=makeShipTargets(players.length,ships,fixedCounts,players);const demand=new Map();
-  function noteDemand(p,shipIndex){
+function rolesForShipCount(ship,count,totalCrew,mission,players){
+  const forcedToShip=forcedShipCount(players,mission,ship.id);
+  const shuttleActive=normalShuttleActive(count,totalCrew,mission)||forcedToShip>10;
+  const roles=shuttleActive?[...ROLE_NAMES]:[...MAIN10];
+
+  // A locked Shuttle station is always legal even below the normal threshold.
+  for(const p of players){
     const ov=getOverride(mission,p.id);
-    const raw=ov?.role||concretePrefs(p)[0];
-    if(!raw)return;
-    const candidates=ov?.role?[raw]:rolesForPreference(raw,shuttleActiveForCount(targets[shipIndex]));
-    if(!candidates.length)return;
-    const role=[...candidates].sort((a,b)=>(demand.get(`${ships[shipIndex].id}|${a}`)||0)-(demand.get(`${ships[shipIndex].id}|${b}`)||0))[0];
-    demand.set(`${ships[shipIndex].id}|${role}`,(demand.get(`${ships[shipIndex].id}|${role}`)||0)+1);
+    if(!ov?.role)continue;
+    if(ov.shipId&&ov.shipId!==ship.id)continue;
+    if(!roles.includes(ov.role))roles.push(ov.role);
   }
-  for(let i=0;i<groups.length;i++)for(const p of groups[i])noteDemand(p,i);
-  for(const p of unassigned){
-    let choices=[];
-    for(let i=0;i<ships.length;i++){
-      if(groups[i].length>=targets[i])continue;
-      choices.push({i,cost:stationAvailabilityCost(p,ships[i].id,demand,mission,targets[i])});
-    }
-    if(!choices.length){
-      for(let i=0;i<ships.length;i++)if(groups[i].length<MAX_PER_SHIP)choices.push({i,cost:stationAvailabilityCost(p,ships[i].id,demand,mission,Math.max(targets[i],groups[i].length+1))+10000});
-    }
-    choices.sort((a,b)=>a.cost-b.cost||groups[a.i].length-groups[b.i].length||a.i-b.i);
-    const pick=choices[0];if(!pick)continue;
-    groups[pick.i].push(p);noteDemand(p,pick.i);
-  }
-  return groups;
+  return{roles,shuttleActive};
 }
-function allowedRoleNames(count,forcedRoles=[]){let base=count<=10?[...MAIN10]:[...ROLE_NAMES];for(const role of forcedRoles)if(role&&!base.includes(role))base.push(role);return base;}
-function allocateRolesForShip(players,ship,mission){
-  const ordered=[...players].sort(prioritySort);const fixedRoles=ordered.map(p=>getOverride(mission,p.id)?.role).filter(Boolean);const allowed=allowedRoleNames(ordered.length,fixedRoles);const slots=allowed.map(name=>({...roleFor(name),shipId:ship.id}));
-  if(!ordered.length)return{assignments:[],allowed};
-  const shuttleActive=shuttleActiveForCount(ordered.length);
-  const orderMap=new Map(ordered.map((p,i)=>[p.id,i]));
-  const matrix=ordered.map(p=>slots.map(slot=>{const ov=getOverride(mission,p.id);if(ov?.role&&slot.name!==ov.role)return 1000000000;if(ov?.shipId&&ov.shipId!==ship.id)return 1000000000;const q=quality(p,slot.name,shuttleActive);const shipPenalty=p.shipPref&&p.shipPref!==ship.id?10:0;const firstCome=(orderMap.get(p.id)||0)*0.001;return qScore(q)+shipPenalty+firstCome+stableTie(p.id,ship.id,slot.name);}));
-  const chosen=hungarian(matrix);const assignments=ordered.map((p,i)=>{const slot=slots[chosen[i]],q=quality(p,slot.name,shuttleActive);return{playerId:p.id,name:p.name,shipId:ship.id,role:slot.name,team:slot.team,teamName:slot.teamName,quality:q,shipMet:!p.shipPref||p.shipPref===ship.id,forced:Boolean(getOverride(mission,p.id)?.role)};});
-  return{assignments,allowed};
+function compatibleWithOverride(person,slot,mission){
+  const ov=getOverride(mission,person.id);
+  if(ov?.role&&slot.role!==ov.role)return false;
+  if(ov?.shipId&&slot.shipId!==ov.shipId)return false;
+  return true;
+}
+function globalAssignmentCost(person,slot,mission,shuttleActive,priorityIndex,totalPlayers){
+  const ov=getOverride(mission,person.id);
+  const shipPenalty=person.shipPref&&person.shipPref!==slot.shipId?1:0;
+
+  // Organiser locks are hard constraints. If only a station is locked,
+  // ship preference can still decide which copy of that station is used.
+  if(ov?.role){
+    return shipPenalty+stableTie(person.id,slot.shipId,slot.role);
+  }
+
+  const q=quality(person,slot.role,shuttleActive);
+  const primary=fairnessBase(q);
+  // Earlier preference time wins only after all substantive outcomes,
+  // ship preference and any gentle spreading preference are otherwise tied.
+  const priorityWeight=Math.max(1,totalPlayers-priorityIndex);
+  const timeTie=priorityWeight*qualityTieLevel(q)*1e-8;
+  return primary+shipPenalty+timeTie+stableTie(person.id,slot.shipId,slot.role);
+}
+
+function addFlowEdge(graph,from,to,cap,cost,meta=null){
+  const forward={to,rev:graph[to].length,cap,cost,meta};
+  const reverse={to:from,rev:graph[from].length,cap:0,cost:-cost,meta:null};
+  graph[from].push(forward);
+  graph[to].push(reverse);
+  return forward;
+}
+function minCostFlow(graph,source,sink,wantedFlow){
+  let flow=0,cost=0;
+  const n=graph.length;
+  while(flow<wantedFlow){
+    const dist=Array(n).fill(Infinity);
+    const inQueue=Array(n).fill(false);
+    const prevNode=Array(n).fill(-1);
+    const prevEdge=Array(n).fill(-1);
+    const queue=[source];
+    dist[source]=0;
+    inQueue[source]=true;
+
+    while(queue.length){
+      const u=queue.shift();
+      inQueue[u]=false;
+      for(let i=0;i<graph[u].length;i++){
+        const e=graph[u][i];
+        if(e.cap<=0)continue;
+        const nd=dist[u]+e.cost;
+        if(nd+1e-12<dist[e.to]){
+          dist[e.to]=nd;
+          prevNode[e.to]=u;
+          prevEdge[e.to]=i;
+          if(!inQueue[e.to]){
+            queue.push(e.to);
+            inQueue[e.to]=true;
+          }
+        }
+      }
+    }
+    if(!Number.isFinite(dist[sink]))break;
+
+    let add=wantedFlow-flow;
+    for(let v=sink;v!==source;v=prevNode[v]){
+      if(v<0||prevNode[v]<0){add=0;break;}
+      add=Math.min(add,graph[prevNode[v]][prevEdge[v]].cap);
+    }
+    if(add<=0)break;
+
+    for(let v=sink;v!==source;v=prevNode[v]){
+      const u=prevNode[v],ei=prevEdge[v];
+      const e=graph[u][ei];
+      e.cap-=add;
+      graph[v][e.rev].cap+=add;
+    }
+    flow+=add;
+    cost+=dist[sink]*add;
+  }
+  return{flow,cost};
+}
+function solveSplit(players,mission,counts){
+  const ships=mission.ships||[];
+  const totalPlayers=players.length;
+  const slotInfo=ships.map((ship,i)=>rolesForShipCount(ship,counts[i]||0,totalPlayers,mission,players));
+  for(let i=0;i<ships.length;i++){
+    if(slotInfo[i].roles.length<(counts[i]||0))return null;
+  }
+
+  const slots=[];
+  ships.forEach((ship,shipIndex)=>{
+    for(const role of slotInfo[shipIndex].roles){
+      slots.push({
+        shipId:ship.id,
+        shipIndex,
+        role,
+        roleData:roleFor(role),
+        shuttleActive:slotInfo[shipIndex].shuttleActive
+      });
+    }
+  });
+
+  const playerCount=players.length;
+  const source=0;
+  const playerStart=1;
+  const slotStart=playerStart+playerCount;
+  const shipStart=slotStart+slots.length;
+  const sink=shipStart+ships.length;
+  const graph=Array.from({length:sink+1},()=>[]);
+  const usedEdges=Array.from({length:playerCount},()=>[]);
+
+  for(let i=0;i<playerCount;i++){
+    addFlowEdge(graph,source,playerStart+i,1,0);
+  }
+  slots.forEach((slot,j)=>{
+    addFlowEdge(graph,slotStart+j,shipStart+slot.shipIndex,1,0);
+  });
+  ships.forEach((ship,i)=>{
+    addFlowEdge(graph,shipStart+i,sink,counts[i]||0,0);
+  });
+
+  players.forEach((person,i)=>{
+    slots.forEach((slot,j)=>{
+      if(!compatibleWithOverride(person,slot,mission))return;
+      const edge=addFlowEdge(
+        graph,
+        playerStart+i,
+        slotStart+j,
+        1,
+        globalAssignmentCost(person,slot,mission,slot.shuttleActive,i,playerCount),
+        {playerIndex:i,slotIndex:j}
+      );
+      usedEdges[i].push({edge,slotIndex:j});
+    });
+  });
+
+  const solved=minCostFlow(graph,source,sink,playerCount);
+  if(solved.flow!==playerCount)return null;
+
+  const assignments=[];
+  players.forEach((person,i)=>{
+    const used=usedEdges[i].find(x=>x.edge.cap===0);
+    if(!used)return;
+    const slot=slots[used.slotIndex];
+    const q=quality(person,slot.role,slot.shuttleActive);
+    assignments.push({
+      playerId:person.id,
+      name:person.name,
+      shipId:slot.shipId,
+      role:slot.role,
+      team:slot.roleData.team,
+      teamName:slot.roleData.teamName,
+      quality:q,
+      shipMet:!person.shipPref||person.shipPref===slot.shipId,
+      forced:Boolean(getOverride(mission,person.id)?.role)
+    });
+  });
+  if(assignments.length!==playerCount)return null;
+
+  return{cost:solved.cost,assignments,slotInfo,counts};
+}
+function possibleShipSplits(total,shipCount){
+  if(shipCount<=1)return total<=MAX_PER_SHIP?[[total]]:[];
+  const out=[];
+  const minFirst=Math.max(0,total-MAX_PER_SHIP);
+  const maxFirst=Math.min(MAX_PER_SHIP,total);
+  for(let first=minFirst;first<=maxFirst;first++){
+    const second=total-first;
+    if(second<0||second>MAX_PER_SHIP)continue;
+    out.push([first,second]);
+  }
+  return out;
+}
+function chooseGlobalSolution(players,mission){
+  const ships=mission.ships||[];
+  const splits=possibleShipSplits(players.length,ships.length);
+  const solved=[];
+
+  for(const counts of splits){
+    const result=solveSplit(players,mission,counts);
+    if(!result)continue;
+    const imbalance=ships.length===2?Math.abs((counts[0]||0)-(counts[1]||0)):0;
+    solved.push({...result,imbalance});
+  }
+  if(!solved.length)return null;
+
+  // "Balance ships = Yes" is a real operational constraint:
+  // use the most even feasible split, with organiser locks allowed to force
+  // a less even result. Preference optimisation then happens within that set.
+  let pool=solved;
+  if(ships.length===2&&mission?.balanceShips!==false){
+    const minImbalance=Math.min(...solved.map(x=>x.imbalance));
+    pool=solved.filter(x=>x.imbalance===minImbalance);
+  }
+
+  for(const x of pool){
+    // If balance is off, evenness is only a gentle nudge and is weaker than
+    // a single ship preference, station preference, or organiser override.
+    x.finalCost=x.cost+(
+      ships.length===2&&mission?.balanceShips===false
+        ? x.imbalance*0.001
+        : 0
+    );
+  }
+  pool.sort((a,b)=>a.finalCost-b.finalCost||a.imbalance-b.imbalance||a.counts[0]-b.counts[0]);
+  return pool[0];
 }
 function computePlan(players,mission){
-  const cap=(mission.ships?.length||1)*MAX_PER_SHIP;const ordered=[...players].sort(prioritySort),eligible=ordered.slice(0,cap),overflow=Math.max(0,ordered.length-cap);const groups=allocateShips(eligible,mission);const byShip=[];let all=[];
-  (mission.ships||[]).forEach((ship,i)=>{const result=allocateRolesForShip(groups[i]||[],ship,mission);byShip.push({ship,players:groups[i]||[],...result});all=all.concat(result.assignments);});
-  const metrics={first:all.filter(a=>a.quality.rank===1).length,second:all.filter(a=>a.quality.rank===2).length,third:all.filter(a=>a.quality.rank===3).length,flex:all.filter(a=>a.quality.kind==="flex").length,avoid:all.filter(a=>a.quality.kind==="avoid").length,shipMet:all.filter(a=>a.shipMet).length};
-  return{byShip,assignments:all,overflow,metrics};
+  const cap=(mission.ships?.length||1)*MAX_PER_SHIP;
+  const ordered=[...players].sort(prioritySort);
+  const eligible=ordered.slice(0,cap);
+  const overflow=Math.max(0,ordered.length-cap);
+  const solved=chooseGlobalSolution(eligible,mission);
+
+  if(!solved){
+    return{
+      byShip:(mission.ships||[]).map(ship=>({ship,players:[],assignments:[],allowed:[...MAIN10],shuttleActive:false})),
+      assignments:[],
+      overflow,
+      error:"No valid crew arrangement could satisfy the current locked assignments.",
+      metrics:{first:0,second:0,third:0,flex:0,avoid:0,shipMet:0}
+    };
+  }
+
+  const byShip=(mission.ships||[]).map((ship,i)=>{
+    const assignments=solved.assignments.filter(a=>a.shipId===ship.id);
+    const ids=new Set(assignments.map(a=>a.playerId));
+    return{
+      ship,
+      players:eligible.filter(p=>ids.has(p.id)),
+      assignments,
+      allowed:[...solved.slotInfo[i].roles],
+      shuttleActive:Boolean(solved.slotInfo[i].shuttleActive)
+    };
+  });
+
+  const all=solved.assignments;
+  const metrics={
+    first:all.filter(a=>a.quality.rank===1).length,
+    second:all.filter(a=>a.quality.rank===2).length,
+    third:all.filter(a=>a.quality.rank===3).length,
+    flex:all.filter(a=>a.quality.kind==="flex").length,
+    avoid:all.filter(a=>a.quality.kind==="avoid").length,
+    shipMet:all.filter(a=>a.shipMet).length
+  };
+  return{byShip,assignments:all,overflow,metrics,counts:solved.counts};
 }
 function roleOptions(selected=""){return `<option value="">Choose…</option><option value="${FLEX}"${selected===FLEX?" selected":""}>${FLEX_LABEL}</option>`+TEAMS.map(t=>`<optgroup label="${esc(t.name)}">${t.roles.map(r=>`<option value="${esc(r)}"${selected===r?" selected":""}>${esc(r)}</option>`).join("")}</optgroup>`).join("");}
 function fixedRoleOptions(selected=""){return `<option value="">No fixed assignment</option>`+TEAMS.map(t=>`<optgroup label="${esc(t.name)}">${t.roles.map(r=>`<option value="${esc(r)}"${selected===r?" selected":""}>${esc(r)}</option>`).join("")}</optgroup>`).join("");}
@@ -194,8 +418,12 @@ function renderPlan(plan,mission,{organiser=false,ownId=""}={}){
   const ships=plan.byShip.map((group,idx)=>{const assignmentMap=new Map(group.assignments.map(a=>[a.role,a]));const allowed=new Set(group.allowed);const forcedExtra=new Set(group.assignments.filter(a=>a.forced).map(a=>a.role));const showRoles=[...ROLE_NAMES];
     let rows="";for(const t of TEAMS){const teamRoles=showRoles.filter(r=>roleFor(r).team===t.id);rows+=`<div class="team-heading ${teamClass(t.id)}">${t.name}</div>`;for(const role of teamRoles){const a=assignmentMap.get(role);const own=a?.playerId===ownId;const inactive=!allowed.has(role)&&!forcedExtra.has(role);const state=a?"Filled for now":inactive?"Not in use":"To be decided";const name=a?esc(a.name):inactive?"Shuttle available from 11 crew":"To be decided";rows+=`<div class="station ${teamClass(t.id)}${inactive?" inactive":""}"><div class="station-top"><span class="station-role">${esc(role)}</span><span class="station-state">${state}</span></div><div class="station-name${a?"":" empty"}${a?.quality.kind==="avoid"?" avoid":""}">${name}</div>${organiser&&a?`<div class="quality-note">${esc(a.quality.label)}${a.shipMet?"":" · different ship preference"}${a.forced?" · locked by organiser":""}</div>`:own&&a?`<div class="quality-note">Your current suggestion · ${esc(a.quality.label)}</div>`:""}</div>`;}}
     const badge=shipBadgeUrl(group.ship);return `<section class="ship-card ${shipClass(group.ship)}"><div class="ship-head"><div class="ship-identity">${badge?`<img class="ship-badge" src="${esc(badge)}" alt="${esc(displayShip(group.ship,idx))} badge">`:""}<div class="ship-title${group.ship.name?.trim()?"":" unnamed"}">${esc(displayShip(group.ship,idx))}</div></div><div class="ship-count">${group.players.length} crew</div></div>${rows}</section>`;}).join("");
-  const hasInactiveShuttle=plan.byShip.some(group=>group.players.length<11);
-  const fallbackNote=hasInactiveShuttle?`<div class="shuttle-fallback-note"><b>Shuttle activates at 11 crew.</b> All main-ship stations, including Dock and drone, remain available. Until shuttle activates, shuttle choices are remembered and count toward equivalent main-ship roles: XO → Captain, Shuttle helm → Helm, Shuttle engineer → Engineering, Shuttle generalist → Beams or Missiles.</div>`:"";
+  const hasInactiveShuttle=plan.byShip.some(group=>!group.shuttleActive);
+  const balancedTwo=(mission?.ships?.length||1)===2&&mission?.balanceShips!==false;
+  const shuttleRule=balancedTwo
+    ?`<b>Balanced two-ship deployment.</b> Shuttle stations stay inactive through response 20. As soon as response 21 exists, the entire crew is recalculated and Shuttle can be used on the ship that takes the 11th crew member.`
+    :`<b>Shuttle activates when a ship reaches 11 crew.</b>`;
+  const fallbackNote=hasInactiveShuttle?`<div class="shuttle-fallback-note">${shuttleRule} All main-ship stations, including Dock and drone, remain available. Until Shuttle activates, Shuttle choices are remembered and count toward equivalent main-ship roles: XO → Captain, Shuttle helm → Helm, Shuttle engineer → Engineering, Shuttle generalist → Beams or Missiles.</div>`:"";
   return `<div class="team-key">${chips}</div>${fallbackNote}<div class="crew-grid">${ships}</div>`;
 }
 function playerRules(){return `<div class="rules"><div class="rule"><span class="rule-num">1</span><span><b>First come, first served</b> is used only when two people are otherwise tied for the same place.</span></div><div class="rule"><span class="rule-num">2</span><span><b>The crew can move around</b> while people are still adding preferences. Every new response can change the best overall suggestion.</span></div><div class="rule"><span class="rule-num">3</span><span><b>This is a planning aid.</b> The organiser can make the final call and the suggested crew does not have to be followed.</span></div></div>`;}
@@ -304,10 +532,12 @@ function openMissionSetup(existing=null){
   const initialCount=Math.max(1,Math.min(2,existing?.ships?.length||1));
   const existingSingle=existing?.ships?.[0]?.name;
   let singleShip=["Takanami","Havock","Unknown"].includes(existingSingle)?existingSingle:"Unknown";
-  showModal(`<button class="btn ghost tiny modal-close" data-close>Close</button><div class="setup-heading"><div><div class="eyebrow">Deployment setup</div><h2>${existing?"Edit deployment":"Create deployment"}</h2><p class="sub">Set the event details and choose the ship or ships running this deployment.</p></div></div><form id="missionSetupForm" class="deployment-setup-form"><div class="setup-main-fields"><div class="field"><label>Deployment / event name</label><input id="missionName" maxlength="100" value="${esc(existing?.title||"")}" placeholder="e.g. Saturday evening crew"></div><div class="field"><label>Deployment date</label><input id="missionDate" type="date" value="${esc(existing?.date||"")}" required></div></div><div class="setup-section"><div class="setup-section-head"><div><div class="label">How many ships?</div><p class="sub">Choose one ship, or run Takanami and Havock together.</p></div></div><div class="ship-count-choice" role="group" aria-label="Number of ships"><button class="ship-count-card${initialCount===1?" selected":""}" type="button" data-ship-count="1"><b>1</b><span>One ship</span></button><button class="ship-count-card${initialCount===2?" selected":""}" type="button" data-ship-count="2"><b>2</b><span>Takanami + Havock</span></button></div><input id="shipCount" type="hidden" value="${initialCount}"></div><div class="setup-section"><div class="setup-section-head"><div><div class="label">Ships in use</div><p id="shipChoiceHelp" class="sub"></p></div></div><div id="shipVisualPicker" class="ship-visual-picker"></div></div><div class="setup-lock-note"><div class="lock-symbol">◆</div><div><b>Need to guarantee a station?</b><span>After players respond, the organiser can lock anyone to a station, or to an exact ship + station. Locked assignments are treated as hard constraints by the crew planner.</span></div></div><div class="actions setup-actions"><button class="btn primary" type="submit">${existing?"Save deployment":"Create deployment"}</button></div><div id="missionSetupMessage" class="message"></div></form>`);
+  let balanceShips=existing?.balanceShips!==false;
+  showModal(`<button class="btn ghost tiny modal-close" data-close>Close</button><div class="setup-heading"><div><div class="eyebrow">Deployment setup</div><h2>${existing?"Edit deployment":"Create deployment"}</h2><p class="sub">Set the event details and choose the ship or ships running this deployment.</p></div></div><form id="missionSetupForm" class="deployment-setup-form"><div class="setup-main-fields"><div class="field"><label>Deployment / event name</label><input id="missionName" maxlength="100" value="${esc(existing?.title||"")}" placeholder="e.g. Saturday evening crew"></div><div class="field"><label>Deployment date</label><input id="missionDate" type="date" value="${esc(existing?.date||"")}" required></div></div><div class="setup-section"><div class="setup-section-head"><div><div class="label">How many ships?</div><p class="sub">Choose one ship, or run Takanami and Havock together.</p></div></div><div class="ship-count-choice" role="group" aria-label="Number of ships"><button class="ship-count-card${initialCount===1?" selected":""}" type="button" data-ship-count="1"><b>1</b><span>One ship</span></button><button class="ship-count-card${initialCount===2?" selected":""}" type="button" data-ship-count="2"><b>2</b><span>Takanami + Havock</span></button></div><input id="shipCount" type="hidden" value="${initialCount}"></div><div class="setup-section"><div class="setup-section-head"><div><div class="label">Ships in use</div><p id="shipChoiceHelp" class="sub"></p></div></div><div id="shipVisualPicker" class="ship-visual-picker"></div></div><div id="balanceShipsSection" class="setup-section${initialCount===2?"":" hidden"}"><div class="setup-section-head"><div><div class="label">Balance ships?</div><p class="sub">Choose whether equal ship numbers are an operational priority or whether station preferences should be allowed to create a more uneven split.</p></div></div><div class="balance-choice" role="group" aria-label="Balance ships"><button type="button" class="balance-card${balanceShips?" selected":""}" data-balance-choice="yes"><b>Yes — keep them even</b><span>Keep crew numbers as balanced as possible. Shuttle stays unavailable through response 20; response 21 triggers a full recalculation and can open Shuttle on the 11-crew ship.</span></button><button type="button" class="balance-card${balanceShips?"":" selected"}" data-balance-choice="no"><b>No — optimise freely</b><span>Prioritise the best station matches. Shuttle can open as soon as either ship reaches 11 crew, with a gentle preference for spreading people when outcomes are otherwise similar.</span></button></div></div><div class="setup-lock-note"><div class="lock-symbol">◆</div><div><b>Need to guarantee a station?</b><span>After players respond, the organiser can lock anyone to a station, or to an exact ship + station. Locked assignments are treated as hard constraints by the crew planner.</span></div></div><div class="actions setup-actions"><button class="btn primary" type="submit">${existing?"Save deployment":"Create deployment"}</button></div><div id="missionSetupMessage" class="message"></div></form>`);
   const countEl=$("#shipCount");
   const picker=$("#shipVisualPicker");
   const help=$("#shipChoiceHelp");
+  const balanceSection=$("#balanceShipsSection");
   function shipTile(name,selected=false,locked=false){const badge=shipBadgeUrl(name);return `<button type="button" class="visual-ship-card ${shipClass({name})}${selected?" selected":""}${locked?" locked":""}" data-ship-choice="${esc(name)}"${locked?" disabled":""}>${badge?`<img src="${esc(badge)}" alt="">`:`<span class="unknown-ship-icon">?</span>`}<span class="visual-ship-name">${esc(name)}</span>${locked?`<small>Included</small>`:""}</button>`;}
   function drawShips(){
     const count=Number(countEl.value)||1;
@@ -315,12 +545,18 @@ function openMissionSetup(existing=null){
     if(count===2){
       help.textContent="Two-ship deployments automatically use both ships.";
       picker.innerHTML=shipTile("Takanami",true,true)+shipTile("Havock",true,true);
+      balanceSection.classList.remove("hidden");
     }else{
       help.textContent="Tap the ship being used. Choose Unknown if it has not been confirmed yet.";
       picker.innerHTML=["Takanami","Havock","Unknown"].map(name=>shipTile(name,name===singleShip,false)).join("");
       picker.querySelectorAll("[data-ship-choice]").forEach(btn=>btn.onclick=()=>{singleShip=btn.dataset.shipChoice;drawShips();});
+      balanceSection.classList.add("hidden");
     }
   }
+  document.querySelectorAll("[data-balance-choice]").forEach(btn=>btn.onclick=()=>{
+    balanceShips=btn.dataset.balanceChoice==="yes";
+    document.querySelectorAll("[data-balance-choice]").forEach(x=>x.classList.toggle("selected",(x.dataset.balanceChoice==="yes")===balanceShips));
+  });
   document.querySelectorAll("[data-ship-count]").forEach(btn=>btn.onclick=()=>{countEl.value=btn.dataset.shipCount;if(Number(btn.dataset.shipCount)===1&&existing?.ships?.length===1){const old=existing.ships[0]?.name;if(["Takanami","Havock","Unknown"].includes(old))singleShip=old;}drawShips();});
   drawShips();
   $("#missionSetupForm").onsubmit=async e=>{
@@ -328,7 +564,7 @@ function openMissionSetup(existing=null){
     const n=Number(countEl.value)||1;
     const names=n===2?["Takanami","Havock"]:[singleShip||"Unknown"];
     const ships=names.map((name,i)=>({id:existing?.ships?.[i]?.id||`ship_${i+1}`,name}));
-    const payload={title:$("#missionName").value.trim(),date:$("#missionDate").value,shipCount:n,ships,closed:existing?.closed||false,overrides:existing?.overrides||{},updatedAt:serverTimestamp()};
+    const payload={title:$("#missionName").value.trim(),date:$("#missionDate").value,shipCount:n,ships,balanceShips:n===2?balanceShips:false,closed:existing?.closed||false,overrides:existing?.overrides||{},updatedAt:serverTimestamp()};
     try{
       if(existing)await updateDoc(doc(db,"missions",existing.id),payload);
       else{Object.assign(payload,{ownerUid:currentUser.uid,ownerName:currentRole==="admin"?"Administrator":(currentUser.email||"Organiser"),createdAt:serverTimestamp()});await addDoc(collection(db,"missions"),payload);}
@@ -529,7 +765,7 @@ async function generateCrewPdf(){
       const shipName=displayShip(ship,shipIndex);
       const assignedCount=shipPlan.assignments.length;
       const shipImage=shipImages[shipBadgeUrl(ship)]||null;
-      const shuttleNormallyAvailable=shuttleActiveForCount(assignedCount);
+      const shuttleNormallyAvailable=Boolean(shipPlan.shuttleActive);
       const deploymentCode=String(activeMission.id||"").slice(0,8).toUpperCase()||"LOCAL";
 
       const canvas=document.createElement("canvas");
@@ -617,7 +853,11 @@ async function generateCrewPdf(){
       // Manifest heading.
       const manifestTop=Y(82);
       drawCanvasText(ctx,`${shipName.toUpperCase()} // CREW MANIFEST`,margin,manifestTop,{size:34,weight:"800",family:"Orbitron",colour:"#071727"});
-      drawCanvasText(ctx,shuttleNormallyAvailable?"FULL STATION GRID ACTIVE":"SHUTTLE ROLES GREYED UNTIL 11 CREW",W-margin,manifestTop,{size:19,weight:"700",family:"Orbitron",colour:shuttleNormallyAvailable?"#168CA0":"#7A8792",align:"right"});
+      const balancedTwo=(activeMission?.ships?.length||1)===2&&activeMission?.balanceShips!==false;
+      const shuttleStatus=shuttleNormallyAvailable
+        ?"FULL STATION GRID ACTIVE"
+        :(balancedTwo?"SHUTTLE HELD UNTIL RESPONSE 21":"SHUTTLE ROLES GREYED UNTIL 11 CREW");
+      drawCanvasText(ctx,shuttleStatus,W-margin,manifestTop,{size:19,weight:"700",family:"Orbitron",colour:shuttleNormallyAvailable?"#168CA0":"#7A8792",align:"right"});
       ctx.fillStyle="#41D3EB";ctx.fillRect(margin,manifestTop+Y(2.6),W-(margin*2),4);
       ctx.fillStyle="#F2BC48";ctx.fillRect(margin,manifestTop+Y(2.6),X(25),4);
 
@@ -695,7 +935,7 @@ async function generateCrewPdf(){
 }
 
 function renderManagerShell(){const m=activeMission;main.innerHTML=`<div class="page-head"><div><button id="backDashboard" class="btn ghost tiny">← Dashboard</button><div class="eyebrow" style="margin-top:10px">Crew management</div><h1>${esc(missionTitle(m))}</h1><p class="sub">${esc(dateText(m.date))}</p></div><div class="actions"><button id="downloadCrewPdfBtn" class="btn primary">Download crew PDF</button><button id="editMissionBtn" class="btn ghost">Deployment setup</button><button id="closeChoicesBtn" class="btn ${m.closed?"success":"danger"}">${m.closed?"Reopen choices":"Close choices"}</button></div></div><div class="grid two"><aside><section class="panel sticky"><h2>Player link</h2><p class="sub">Send this link to everyone who should add their preferences.</p><div class="share-box"><input id="managerShareLink" readonly value="${esc(buildMissionLink(m.id))}"><button id="managerCopy" class="btn primary tiny">Copy link</button></div><div class="stat-row" id="managerStats"></div><div class="actions"><button id="addPlayerBtn" class="btn ghost">Add someone</button></div><div id="managerMessage" class="message"></div></section><section class="panel"><h2>Responses</h2><div id="responseList" class="response-list"></div></section></aside><section class="panel"><div class="eyebrow">Live suggestion</div><h2>Current crew plan</h2><p class="sub">The whole suggestion is recalculated whenever a preference changes. Fixed organiser choices are worked around automatically.</p><div id="managerPlan"></div></section></div>`;$("#backDashboard").onclick=()=>{clearUnsubs();currentRole==="admin"?renderAdminDashboard():renderOrganiserDashboard();};$("#downloadCrewPdfBtn").onclick=generateCrewPdf;$("#editMissionBtn").onclick=()=>openMissionSetup(activeMission);$("#managerCopy").onclick=()=>copyMissionLink(m.id,$("#managerCopy"));$("#closeChoicesBtn").onclick=async()=>{await updateDoc(doc(db,"missions",m.id),{closed:!activeMission.closed,updatedAt:serverTimestamp()});};$("#addPlayerBtn").onclick=()=>openOrganiserPlayerEditor();}
-function renderManagerState(){if(!activeMission||!$("#managerPlan"))return;const cap=(activeMission.ships?.length||1)*MAX_PER_SHIP,plan=computePlan(missionPlayers,activeMission);$("#closeChoicesBtn").textContent=activeMission.closed?"Reopen choices":"Close choices";$("#closeChoicesBtn").className=`btn ${activeMission.closed?"success":"danger"}`;$("#managerStats").innerHTML=`<span class="stat"><b>${missionPlayers.length}</b> responses</span><span class="stat"><b>${cap}</b> places</span><span class="stat"><b>${plan.metrics.first}</b> first choices</span>${plan.metrics.avoid?`<span class="stat"><b>${plan.metrics.avoid}</b> last-resort roles</span>`:""}`;$("#managerPlan").innerHTML=renderPlan(plan,activeMission,{organiser:true});$("#responseList").innerHTML=missionPlayers.length?[...missionPlayers].sort(prioritySort).map(p=>responseRow(p)).join(""):`<p class="sub">No responses yet.</p>`;document.querySelectorAll("[data-edit-player]").forEach(b=>b.onclick=()=>openOrganiserPlayerEditor(missionPlayers.find(p=>p.id===b.dataset.editPlayer)));document.querySelectorAll("[data-delete-player]").forEach(b=>b.onclick=()=>deleteOrganiserPlayer(b.dataset.deletePlayer));}
+function renderManagerState(){if(!activeMission||!$("#managerPlan"))return;const cap=(activeMission.ships?.length||1)*MAX_PER_SHIP,plan=computePlan(missionPlayers,activeMission);$("#closeChoicesBtn").textContent=activeMission.closed?"Reopen choices":"Close choices";$("#closeChoicesBtn").className=`btn ${activeMission.closed?"success":"danger"}`;$("#managerStats").innerHTML=`<span class="stat"><b>${missionPlayers.length}</b> responses</span><span class="stat"><b>${cap}</b> places</span><span class="stat"><b>${plan.metrics.first}</b> first choices</span>${plan.metrics.avoid?`<span class="stat"><b>${plan.metrics.avoid}</b> last-resort roles</span>`:""}`;setMessage($("#managerMessage"),plan.error||"",plan.error?"error":"");$("#managerPlan").innerHTML=renderPlan(plan,activeMission,{organiser:true});$("#responseList").innerHTML=missionPlayers.length?[...missionPlayers].sort(prioritySort).map(p=>responseRow(p)).join(""):`<p class="sub">No responses yet.</p>`;document.querySelectorAll("[data-edit-player]").forEach(b=>b.onclick=()=>openOrganiserPlayerEditor(missionPlayers.find(p=>p.id===b.dataset.editPlayer)));document.querySelectorAll("[data-delete-player]").forEach(b=>b.onclick=()=>deleteOrganiserPlayer(b.dataset.deletePlayer));}
 function responseRow(p){const ov=getOverride(activeMission,p.id);const pref=(p.prefs||[]).map(x=>x===FLEX?"No preference":x).join(" → ");const ship=p.shipPref?(activeMission.ships||[]).findIndex(s=>s.id===p.shipPref):-1;return `<div class="response-row"><div class="response-top"><div><div class="response-name">${esc(p.name)}</div><div class="response-meta">${ship>=0?`Ship: ${esc(displayShip(activeMission.ships[ship],ship))}`:"Ship: no preference"}<br>${esc(pref)}</div>${ov?.role?`<div class="fixed-note">Locked: ${esc(ov.role)}${ov.shipId?` · ${esc(displayShip(activeMission.ships.find(s=>s.id===ov.shipId),activeMission.ships.findIndex(s=>s.id===ov.shipId)))}`:" · either ship"}</div>`:""}</div><div class="actions"><button class="btn ghost tiny" data-edit-player="${p.id}">Edit</button><button class="btn danger tiny" data-delete-player="${p.id}">Delete</button></div></div></div>`;}
 async function deleteOrganiserPlayer(id){const p=missionPlayers.find(x=>x.id===id);if(!p||!confirm(`Delete ${p.name}'s response?`))return;await deleteDoc(doc(db,"missions",activeMission.id,"players",id));if(activeMission.overrides?.[id]){const overrides={...(activeMission.overrides||{})};delete overrides[id];await updateDoc(doc(db,"missions",activeMission.id),{overrides,updatedAt:serverTimestamp()});}}
 function openOrganiserPlayerEditor(player=null){const ov=player?getOverride(activeMission,player.id):null;const shipOptions=(activeMission.ships||[]).map((s,i)=>`<option value="${s.id}"${player?.shipPref===s.id?" selected":""}>${esc(displayShip(s,i))}</option>`).join("");const fixedShipOptions=(activeMission.ships||[]).map((s,i)=>`<option value="${s.id}"${ov?.shipId===s.id?" selected":""}>${esc(displayShip(s,i))}</option>`).join("");showModal(`<button class="btn ghost tiny modal-close" data-close>Close</button><div class="eyebrow">Organiser entry</div><h2>${player?`Edit ${esc(player.name)}`:"Add someone"}</h2><form id="orgPlayerForm"><div class="field"><label>Name</label><input id="orgName" value="${esc(player?.name||"")}" maxlength="60" required></div><div class="field"><label>Preferred ship</label><select id="orgShip"><option value="">No preference</option>${shipOptions}</select></div><div class="three-fields"><div class="field"><label>1st station</label><select id="orgPref1">${roleOptions(player?.prefs?.[0]||"")}</select></div><div class="field"><label>2nd station</label><select id="orgPref2">${roleOptions(player?.prefs?.[1]||"")}</select></div><div class="field"><label>3rd station</label><select id="orgPref3">${roleOptions(player?.prefs?.[2]||"")}</select></div></div><div class="label">Really don't want</div><div id="orgDislikes" class="checks">${checkboxes(player?.dislikes||[])}</div><hr style="border:0;border-top:1px solid var(--line);margin:15px 0"><div class="eyebrow">Optional locked assignment</div><div class="field"><label>Locked station</label><select id="orgFixedRole">${fixedRoleOptions(ov?.role||"")}</select><small>Leave this as No fixed assignment to let the planner decide normally. A locked station is a hard constraint.</small></div><div class="field"><label>Locked ship</label><select id="orgFixedShip"><option value="">Either ship</option>${fixedShipOptions}</select></div><div class="actions"><button class="btn primary" type="submit">Save</button></div><div id="orgPlayerMessage" class="message"></div></form>`);setupCheckHandlers("org");$("#orgPlayerForm").onsubmit=async e=>{e.preventDefault();const id=player?.id||randId("org");const payload={name:$("#orgName").value.trim(),shipPref:$("#orgShip").value,prefs:[$("#orgPref1").value,$("#orgPref2").value,$("#orgPref3").value],dislikes:readChecks($("#orgDislikes"))};const error=validatePrefs(payload,missionPlayers,player?.id||"");if(error){setMessage($("#orgPlayerMessage"),error,"error");return;}const fixedRole=$("#orgFixedRole").value,fixedShip=$("#orgFixedShip").value;if(fixedShip&&!fixedRole){setMessage($("#orgPlayerMessage"),"Choose a locked station before choosing a locked ship.","error");return;}if(fixedRole&&fixedShip){const clash=Object.entries(activeMission.overrides||{}).find(([pid,x])=>pid!==id&&x.role===fixedRole&&x.shipId===fixedShip);if(clash){setMessage($("#orgPlayerMessage"),"That exact ship + station is already locked to someone else.","error");return;}}
