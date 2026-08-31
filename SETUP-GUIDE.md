@@ -1,75 +1,118 @@
 # Setup guide — Bridge Command Crew Planner
 
-This project uses **GitHub Pages + one separate Firebase project**. No paid server is required for the expected usage.
+This project uses **GitHub Pages + Firebase Authentication + Firestore**. It is separate from the Sarah crew tracker.
 
-## 1. Create the Firebase project
+## 1. Firebase project
 
-1. Go to the Firebase Console.
-2. Create a new project for this reusable crew planner.
-3. Add a **Web app** using the `</>` button.
-4. Do not enable Firebase Hosting; GitHub Pages will host the site.
-5. In the web-app setup screen choose **Config** and copy the `firebaseConfig` values.
+Project already configured in this build:
 
-## 2. Firebase config
+- Project ID: `bc-crew-autoassigner`
+- GitHub Pages site: `https://djsmartyp.github.io/bc-crew-assigner/`
+- Admin UID: already inserted into both `firebase-config.js` and `firestore.rules`
 
-Already completed in the configured package. You do not need to copy Firebase's npm imports or edit the project values again.
+Do not copy Firebase's npm `import` example into this project. The site loads the browser SDK itself.
 
-The only remaining value in `firebase-config.js` is the Admin UID, which is added after creating the Admin account.
+## 2. Authentication methods
 
-## 3. Enable Authentication
+In Firebase Console → **Security → Authentication → Sign-in method** enable:
 
-In Firebase Authentication, enable:
+- **Email/Password** — kept for the single Admin account.
+- **Email link (passwordless sign-in)** — used by Organisers.
+- **Anonymous** — used behind the scenes for Players opening mission links.
 
-- **Email/Password** — for Admin and Organisers.
-- **Anonymous** — for Players opening invite links.
+Organisers do not create passwords. They enter an email address on the site, receive a Firebase sign-in email, and click the link.
 
-## 4. Create Firestore
+## 3. Authorised domain
 
-Create a Firestore database using the default database ID. A UK/European location is sensible if most users are in the UK.
+In Firebase Console → **Security → Authentication → Settings → Authorized domains**, add:
 
-## 5. Create the Admin account
+`djsmartyp.github.io`
 
-In Firebase Authentication → Users:
+Do not include `https://` or `/bc-crew-assigner/`.
 
-1. Add your Admin email/password account.
-2. Copy its **User UID**.
-3. Paste that UID into `firebase-config.js` as `ADMIN_UID`.
-4. Open `firestore.rules` and replace `PASTE_ADMIN_UID` with the same UID.
-5. Publish the rules in Firestore → Rules.
+## 4. Admin account
 
-The Admin account does not need an organiser profile document. The UID itself grants Admin access.
+The Admin account should exist in Firebase Authentication as an Email/Password user.
 
-## 6. Publish the site
+This build is locked to Admin UID:
 
-In GitHub repo settings:
+`tG8hNmlYRSd9RBiHe6WUEWFeZ173`
 
-1. Settings → Pages.
-2. Source: **Deploy from a branch**.
-3. Branch: **main**.
-4. Folder: **/(root)**.
-5. Save.
-
-The normal site address will be approximately:
-
-`https://djsmartyp.github.io/bc-crew-assigner/`
-
-The Admin login can be opened with:
+Admin login URL:
 
 `https://djsmartyp.github.io/bc-crew-assigner/?admin=1`
 
-## 7. Test in this order
+Do not share the Admin password.
 
-1. Sign in using the Admin address.
-2. Open the normal site in another/incognito browser and create an Organiser account.
-3. Create a one-ship test mission.
-4. Copy its player link.
-5. Open the player link and submit a test preference.
-6. Return to the Organiser dashboard and confirm the response appears.
-7. Test a fixed station override.
-8. Delete the test mission from Admin when finished.
+## 5. Firestore database and rules
+
+Create a Firestore database using the default database ID if you have not already done so.
+
+Then open Firebase Console → **Firestore Database → Rules** and replace the rules there with the complete contents of `firestore.rules` from this package, then click **Publish**.
+
+The rules enforce:
+
+- Admin UID → global access to all missions and organiser profiles.
+- Organiser → access to the missions they own.
+- Player → can create/update their own mission response; organiser/admin can manage it for them.
+
+The organiser profile can be created only for an authenticated account with a verified email. Firebase email-link sign-in verifies the email during sign-in.
+
+## 6. Publish the website
+
+Upload all project files to the root of `DJSmartyP/bc-crew-assigner` on the `main` branch.
+
+Then in GitHub:
+
+1. **Settings → Pages**
+2. Source: **Deploy from a branch**
+3. Branch: **main**
+4. Folder: **/(root)**
+5. Save
+
+Normal organiser URL:
+
+`https://djsmartyp.github.io/bc-crew-assigner/`
+
+Admin URL:
+
+`https://djsmartyp.github.io/bc-crew-assigner/?admin=1`
+
+## 7. Test organiser magic-link sign-in
+
+1. Open the normal site.
+2. Enter a non-admin email address.
+3. Click **Send sign-in link**.
+4. Open the Firebase email and click its link.
+5. The site should return to **My missions** automatically.
+6. If the link is opened on a different browser/device, the site asks for the same email address again before completing sign-in.
+7. Create a one-ship test mission and copy its player link.
+
+## 8. Test the three user levels
+
+### Admin
+
+- Open `?admin=1`.
+- Sign in with the Admin email/password account.
+- Confirm **All missions** is visible.
+
+### Organiser
+
+- Sign in using an email link.
+- Create a mission.
+- Add/edit a player manually.
+- Test a fixed station override.
+- Close and reopen player choices.
+
+### Player
+
+- Open the organiser's mission link.
+- Submit three ranked station preferences.
+- Confirm the crew suggestion appears.
+- Confirm another browser cannot edit that player's entry merely by typing the same name.
 
 ## Player editing rule
 
-A player's own entry can be reopened only from the same browser/device used to create it. Shared devices can register multiple people; each person's Firebase identity is stored separately in that browser.
+A player's own entry can be reopened only from the same browser/device used to create it. Shared devices can register multiple people; each person's Firebase anonymous identity is stored separately in that browser.
 
-If a player changes device, an Organiser or Admin can edit the response for them.
+If a player changes device, the Organiser or Admin can edit the response for them.

@@ -5,10 +5,10 @@ service cloud.firestore {
       return request.auth != null;
     }
     function isAdmin() {
-      return signedIn() && request.auth.uid == "PASTE_ADMIN_UID";
+      return signedIn() && request.auth.uid == "tG8hNmlYRSd9RBiHe6WUEWFeZ173";
     }
-    function isPasswordUser() {
-      return signedIn() && request.auth.token.firebase.sign_in_provider == "password";
+    function isVerifiedEmailUser() {
+      return signedIn() && request.auth.token.email_verified == true;
     }
     function isOrganiser() {
       return signedIn() && exists(/databases/$(database)/documents/profiles/$(request.auth.uid));
@@ -18,12 +18,12 @@ service cloud.firestore {
     }
 
     match /profiles/{uid} {
-      allow create: if isPasswordUser()
+      allow create: if isVerifiedEmailUser()
                     && request.auth.uid == uid
                     && request.resource.data.role == "organiser";
       allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
       allow update: if isAdmin() || (
-        isPasswordUser()
+        isVerifiedEmailUser()
         && request.auth.uid == uid
         && resource.data.role == "organiser"
         && request.resource.data.role == "organiser"

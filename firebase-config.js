@@ -9,6 +9,5 @@ export const firebaseConfig = {
   appId: "1:547695320366:web:49e784ee329f4c28f32ebf"
 };
 
-// After creating your single Admin account in Firebase Authentication,
-// paste its User UID here AND into firestore.rules.
-export const ADMIN_UID = "PASTE_ADMIN_UID";
+// Single global administrator account. The same UID is enforced in firestore.rules.
+export const ADMIN_UID = "tG8hNmlYRSd9RBiHe6WUEWFeZ173";
