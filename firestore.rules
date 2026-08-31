@@ -1,0 +1,99 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+    function isAdmin() {
+      return signedIn() && request.auth.uid == "PASTE_ADMIN_UID";
+    }
+    function isPasswordUser() {
+      return signedIn() && request.auth.token.firebase.sign_in_provider == "password";
+    }
+    function isOrganiser() {
+      return signedIn() && exists(/databases/$(database)/documents/profiles/$(request.auth.uid));
+    }
+    function ownsMission(missionId) {
+      return signedIn() && get(/databases/$(database)/documents/missions/$(missionId)).data.ownerUid == request.auth.uid;
+    }
+
+    match /profiles/{uid} {
+      allow create: if isPasswordUser()
+                    && request.auth.uid == uid
+                    && request.resource.data.role == "organiser";
+      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      allow update: if isAdmin() || (
+        isPasswordUser()
+        && request.auth.uid == uid
+        && resource.data.role == "organiser"
+        && request.resource.data.role == "organiser"
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /missions/{missionId} {
+      allow create: if isAdmin() || (
+        isOrganiser()
+        && request.resource.data.ownerUid == request.auth.uid
+      );
+
+      // Players need the mission settings to display the invite page and live roster.
+      allow read: if signedIn();
+
+      allow update, delete: if isAdmin() || (
+        signedIn() && resource.data.ownerUid == request.auth.uid
+      );
+
+      match /players/{playerId} {
+        // The shared roster is readable to signed-in mission visitors so the live
+        // suggested crew can be calculated in the browser.
+        allow read: if signedIn();
+
+        function validPlayerShape() {
+          return request.resource.data.keys().hasOnly([
+                   "name", "shipPref", "prefs", "dislikes", "source",
+                   "createdAt", "priorityAt", "updatedAt"
+                 ])
+                 && request.resource.data.name is string
+                 && request.resource.data.shipPref is string
+                 && request.resource.data.prefs is list
+                 && request.resource.data.prefs.size() == 3
+                 && request.resource.data.dislikes is list;
+        }
+
+        function preferencesChanged() {
+          return request.resource.data.shipPref != resource.data.shipPref
+                 || request.resource.data.prefs != resource.data.prefs
+                 || request.resource.data.dislikes != resource.data.dislikes;
+        }
+
+        function playerCanCreateOwn() {
+          return signedIn()
+                 && request.auth.uid == playerId
+                 && validPlayerShape()
+                 && request.resource.data.source == "player"
+                 && request.resource.data.createdAt == request.time
+                 && request.resource.data.priorityAt == request.time
+                 && request.resource.data.updatedAt == request.time;
+        }
+
+        function playerCanUpdateOwn() {
+          return signedIn()
+                 && request.auth.uid == playerId
+                 && validPlayerShape()
+                 && request.resource.data.source == "player"
+                 && request.resource.data.createdAt == resource.data.createdAt
+                 && request.resource.data.updatedAt == request.time
+                 && (
+                   (preferencesChanged() && request.resource.data.priorityAt == request.time)
+                   || (!preferencesChanged() && request.resource.data.priorityAt == resource.data.priorityAt)
+                 );
+        }
+
+        allow create: if isAdmin() || ownsMission(missionId) || playerCanCreateOwn();
+        allow update: if isAdmin() || ownsMission(missionId) || playerCanUpdateOwn();
+        allow delete: if isAdmin() || ownsMission(missionId);
+      }
+    }
+  }
+}
