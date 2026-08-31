@@ -1,0 +1,11 @@
+Interstellar Deployment Planner – login page redesign
+
+Changes:
+- Larger, centred header banner for much clearer branding.
+- Login landing page now uses two columns on desktop.
+- Organiser magic-link sign-in remains the primary action on the left.
+- Small admin sign-in remains underneath.
+- Right-hand feature panel explains deployment creation, unique player links, preference collection, live rebalancing, crew-size/shuttle behaviour and organiser controls.
+- Mobile stacks cleanly into one column.
+
+Replace app.js and styles.css. No Firebase changes are required.
