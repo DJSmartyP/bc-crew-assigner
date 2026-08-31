@@ -1,0 +1,1 @@
+Replace index.html and styles.css, and add site-header-banner.png and site-icon.png to the repo root. The header now uses the banner graphic, and the site uses the icon as the browser/app icon. No Firebase changes are needed.
