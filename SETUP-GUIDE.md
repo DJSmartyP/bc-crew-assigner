@@ -1,4 +1,4 @@
-# Setup guide — Bridge Command Crew Planner
+# Setup guide — Interstellar Deployment Planner
 
 This project uses **GitHub Pages + Firebase Authentication + Firestore**. It is separate from the Sarah crew tracker.
 

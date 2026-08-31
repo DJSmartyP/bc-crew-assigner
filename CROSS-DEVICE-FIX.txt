@@ -1,0 +1,14 @@
+Interstellar Deployment Planner – cross-device organiser sign-in fix
+
+Replace app.js in the GitHub repo.
+
+What was wrong:
+The different-device flow correctly asked the organiser to confirm the email address,
+and Firebase signed them in, but the app had already exited its normal startup flow.
+That meant the dashboard did not open.
+
+What changed:
+After successful email confirmation, the app reloads once with the authenticated
+Firebase session. The normal organiser dashboard then opens.
+
+No Firebase settings or Firestore rules need changing for this fix.

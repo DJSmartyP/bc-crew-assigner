@@ -1,0 +1,21 @@
+BC Crew Assigner – all stations + shuttle fallback update
+
+Behaviour:
+- All 14 stations are always shown.
+- 1–9 crew: Dock and drone + all shuttle stations are greyed/not in use.
+- 10 crew: Dock and drone is active; shuttle remains greyed/not in use.
+- 11–14 crew: all 14 stations are available.
+- Players can always select shuttle roles as preferences. Their original selections are stored unchanged.
+- While shuttle is inactive:
+  XO -> Captain
+  Shuttle helm -> Helm
+  Shuttle engineer -> Engineering
+  Shuttle generalist -> Beams or Missiles
+  These equivalents are used by the assignment planner without rewriting the player's saved choices.
+- Organiser/Admin fixed assignments can still activate an otherwise inactive station.
+
+Replace:
+- app.js
+- styles.css
+
+No Firebase or Firestore rules changes are required.

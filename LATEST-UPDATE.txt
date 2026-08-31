@@ -1,0 +1,11 @@
+BC Crew Assigner – latest update
+
+This package includes BOTH:
+1. Cross-device organiser magic-link confirmation fix.
+2. Takanami and Havock ship badges from the earlier Sarah build.
+
+Ship badges appear on the crew roster and alongside the ship selector in mission setup.
+Unknown has no ship badge.
+
+Replace app.js and styles.css.
+No Firebase or Firestore rule changes are required for these two changes.

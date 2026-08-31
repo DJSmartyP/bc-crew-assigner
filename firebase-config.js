@@ -1,4 +1,4 @@
-// Firebase web configuration for the Bridge Command Crew Planner.
+// Firebase web configuration for the Interstellar Deployment Planner.
 // These values are intended to be used client-side.
 export const firebaseConfig = {
   apiKey: "AIzaSyDwxv1oE9UY_YsTABUUHyfJ4dcNqo4nMg0",

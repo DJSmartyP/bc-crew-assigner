@@ -1,6 +1,6 @@
-# Bridge Command Crew Planner
+# Interstellar Deployment Planner
 
-Reusable multi-mission crew preference and assignment planner for Bridge Command-style events.
+Reusable multi-mission crew preference and assignment planner for Interstellar-style events.
 
 ## User levels
 

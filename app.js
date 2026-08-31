@@ -14,6 +14,20 @@ const MAX_SHIPS = 8;
 const MAX_PER_SHIP = 14;
 const FLEX = "__FLEX__";
 const FLEX_LABEL = "No preference / fill a gap";
+const SHIP_BADGES = {
+  Takanami: "https://cdn.discordapp.com/emojis/1351204968992084038.webp?size=96",
+  Havock: "https://cdn.discordapp.com/emojis/1351204847453605970.webp?size=96"
+};
+function shipBadgeUrl(shipOrName){
+  const name=typeof shipOrName==="string"?shipOrName:shipOrName?.name;
+  return SHIP_BADGES[name]||"";
+}
+function shipClass(ship){
+  const name=String(ship?.name||"").toLowerCase();
+  if(name==="takanami")return "ship-takanami";
+  if(name==="havock")return "ship-havock";
+  return "ship-unknown";
+}
 
 const TEAMS = [
   {id:"command",name:"Command",roles:["Captain"]},
@@ -49,9 +63,36 @@ function normalizeName(s){return String(s||"").trim().toLocaleLowerCase().replac
 function randId(prefix="x"){return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,9)}`;}
 function setMessage(el,text,type=""){if(!el)return;el.textContent=text||"";el.className=`message${type?` ${type}`:""}`;}
 function clearUnsubs(){missionUnsubs.forEach(fn=>{try{fn();}catch{}});missionUnsubs=[];}
-function quality(person,role){
+const SHUTTLE_FALLBACKS = {
+  "XO": ["Captain"],
+  "Shuttle helm": ["Helm"],
+  "Shuttle engineer": ["Engineering"],
+  "Shuttle generalist": ["Beams","Missiles"]
+};
+function shuttleActiveForCount(count){return Number(count)>=11;}
+function rolesForPreference(pref,shuttleActive=true){
+  if(!pref||pref===FLEX)return [];
+  if(!shuttleActive&&SHUTTLE_FALLBACKS[pref])return [...SHUTTLE_FALLBACKS[pref]];
+  return [pref];
+}
+function fallbackPreferenceLabel(pref,role){
+  if(pref==="Shuttle generalist"&&(role==="Beams"||role==="Missiles"))return "Shuttle generalist → weapons";
+  if(pref==="XO"&&role==="Captain")return "XO → Captain";
+  if(pref==="Shuttle helm"&&role==="Helm")return "Shuttle helm → Helm";
+  if(pref==="Shuttle engineer"&&role==="Engineering")return "Shuttle engineer → Engineering";
+  return "";
+}
+function quality(person,role,shuttleActive=true){
   if((person.dislikes||[]).includes(role))return{kind:"avoid",rank:0,label:"Really don't want"};
-  for(let i=0;i<3;i++){const pref=person.prefs?.[i];if(pref===role)return{kind:"rank",rank:i+1,label:`${i+1}${i===0?"st":i===1?"nd":"rd"} choice`};if(pref===FLEX)return{kind:"flex",rank:0,label:"Happy to fill a gap"};}
+  for(let i=0;i<3;i++){
+    const pref=person.prefs?.[i];
+    if(pref===FLEX)return{kind:"flex",rank:0,label:"Happy to fill a gap"};
+    if(pref===role)return{kind:"rank",rank:i+1,label:`${i+1}${i===0?"st":i===1?"nd":"rd"} choice`,fallback:false};
+    if(!shuttleActive&&rolesForPreference(pref,false).includes(role)){
+      const map=fallbackPreferenceLabel(pref,role);
+      return{kind:"rank",rank:i+1,label:`${i+1}${i===0?"st":i===1?"nd":"rd"} choice equivalent${map?` · ${map}`:""}`,fallback:true,sourcePref:pref};
+    }
+  }
   return{kind:"other",rank:0,label:"Other available role"};
 }
 function qScore(q){if(q.kind==="rank"&&q.rank===1)return 0;if(q.kind==="rank"&&q.rank===2)return 100000;if(q.kind==="rank"&&q.rank===3)return 200000;if(q.kind==="flex")return 300000;if(q.kind==="other")return 400000;return 900000000;}
@@ -64,11 +105,15 @@ function hungarian(a){
 }
 function getOverride(mission,playerId){return mission?.overrides?.[playerId]||null;}
 function concretePrefs(p){return (p.prefs||[]).filter(x=>x&&x!==FLEX);}
-function stationAvailabilityCost(person,shipId,demand,mission){
+function stationAvailabilityCost(person,shipId,demand,mission,targetCount=MAX_PER_SHIP){
   const ov=getOverride(mission,person.id);if(ov?.shipId && ov.shipId!==shipId)return 100000000;
+  const shuttleActive=shuttleActiveForCount(targetCount);
   const prefs=ov?.role?[ov.role]:concretePrefs(person);
   let prefCost=3500;
-  for(let i=0;i<prefs.length;i++){const role=prefs[i];const used=demand.get(`${shipId}|${role}`)||0;if(used===0){prefCost=i*1000;break;}}
+  for(let i=0;i<prefs.length;i++){
+    const candidates=ov?.role?[prefs[i]]:rolesForPreference(prefs[i],shuttleActive);
+    if(candidates.some(role=>(demand.get(`${shipId}|${role}`)||0)===0)){prefCost=i*1000;break;}
+  }
   const shipPenalty=person.shipPref&&person.shipPref!==shipId?120:0;
   return prefCost+shipPenalty;
 }
@@ -83,19 +128,39 @@ function allocateShips(players,mission){
   const order=[...players].sort(prioritySort);
   for(const p of order){const ov=getOverride(mission,p.id);if(ov?.shipId){const idx=ships.findIndex(s=>s.id===ov.shipId);if(idx>=0&&fixedCounts[idx]<MAX_PER_SHIP){groups[idx].push(p);fixedCounts[idx]++;continue;}}unassigned.push(p);}
   const targets=makeShipTargets(players.length,ships,fixedCounts,players);const demand=new Map();
-  for(let i=0;i<groups.length;i++)for(const p of groups[i]){const role=getOverride(mission,p.id)?.role||concretePrefs(p)[0];if(role)demand.set(`${ships[i].id}|${role}`,(demand.get(`${ships[i].id}|${role}`)||0)+1);}
-  for(const p of unassigned){let choices=[];for(let i=0;i<ships.length;i++){if(groups[i].length>=targets[i])continue;choices.push({i,cost:stationAvailabilityCost(p,ships[i].id,demand,mission)});}if(!choices.length){for(let i=0;i<ships.length;i++)if(groups[i].length<MAX_PER_SHIP)choices.push({i,cost:stationAvailabilityCost(p,ships[i].id,demand,mission)+10000});}
-    choices.sort((a,b)=>a.cost-b.cost||groups[a.i].length-groups[b.i].length||a.i-b.i);const pick=choices[0];if(!pick)continue;groups[pick.i].push(p);const role=getOverride(mission,p.id)?.role||concretePrefs(p)[0];if(role)demand.set(`${ships[pick.i].id}|${role}`,(demand.get(`${ships[pick.i].id}|${role}`)||0)+1);
+  function noteDemand(p,shipIndex){
+    const ov=getOverride(mission,p.id);
+    const raw=ov?.role||concretePrefs(p)[0];
+    if(!raw)return;
+    const candidates=ov?.role?[raw]:rolesForPreference(raw,shuttleActiveForCount(targets[shipIndex]));
+    if(!candidates.length)return;
+    const role=[...candidates].sort((a,b)=>(demand.get(`${ships[shipIndex].id}|${a}`)||0)-(demand.get(`${ships[shipIndex].id}|${b}`)||0))[0];
+    demand.set(`${ships[shipIndex].id}|${role}`,(demand.get(`${ships[shipIndex].id}|${role}`)||0)+1);
+  }
+  for(let i=0;i<groups.length;i++)for(const p of groups[i])noteDemand(p,i);
+  for(const p of unassigned){
+    let choices=[];
+    for(let i=0;i<ships.length;i++){
+      if(groups[i].length>=targets[i])continue;
+      choices.push({i,cost:stationAvailabilityCost(p,ships[i].id,demand,mission,targets[i])});
+    }
+    if(!choices.length){
+      for(let i=0;i<ships.length;i++)if(groups[i].length<MAX_PER_SHIP)choices.push({i,cost:stationAvailabilityCost(p,ships[i].id,demand,mission,Math.max(targets[i],groups[i].length+1))+10000});
+    }
+    choices.sort((a,b)=>a.cost-b.cost||groups[a.i].length-groups[b.i].length||a.i-b.i);
+    const pick=choices[0];if(!pick)continue;
+    groups[pick.i].push(p);noteDemand(p,pick.i);
   }
   return groups;
 }
-function allowedRoleNames(count,forcedRoles=[]){let base=count<=9?[...CORE9]:count===10?[...MAIN10]:[...ROLE_NAMES];for(const role of forcedRoles)if(role&&!base.includes(role))base.push(role);return base;}
+function allowedRoleNames(count,forcedRoles=[]){let base=count<=10?[...MAIN10]:[...ROLE_NAMES];for(const role of forcedRoles)if(role&&!base.includes(role))base.push(role);return base;}
 function allocateRolesForShip(players,ship,mission){
   const ordered=[...players].sort(prioritySort);const fixedRoles=ordered.map(p=>getOverride(mission,p.id)?.role).filter(Boolean);const allowed=allowedRoleNames(ordered.length,fixedRoles);const slots=allowed.map(name=>({...roleFor(name),shipId:ship.id}));
   if(!ordered.length)return{assignments:[],allowed};
+  const shuttleActive=shuttleActiveForCount(ordered.length);
   const orderMap=new Map(ordered.map((p,i)=>[p.id,i]));
-  const matrix=ordered.map(p=>slots.map(slot=>{const ov=getOverride(mission,p.id);if(ov?.role&&slot.name!==ov.role)return 1000000000;if(ov?.shipId&&ov.shipId!==ship.id)return 1000000000;const q=quality(p,slot.name);const shipPenalty=p.shipPref&&p.shipPref!==ship.id?10:0;const firstCome=(orderMap.get(p.id)||0)*0.001;return qScore(q)+shipPenalty+firstCome+stableTie(p.id,ship.id,slot.name);}));
-  const chosen=hungarian(matrix);const assignments=ordered.map((p,i)=>{const slot=slots[chosen[i]],q=quality(p,slot.name);return{playerId:p.id,name:p.name,shipId:ship.id,role:slot.name,team:slot.team,teamName:slot.teamName,quality:q,shipMet:!p.shipPref||p.shipPref===ship.id,forced:Boolean(getOverride(mission,p.id)?.role)};});
+  const matrix=ordered.map(p=>slots.map(slot=>{const ov=getOverride(mission,p.id);if(ov?.role&&slot.name!==ov.role)return 1000000000;if(ov?.shipId&&ov.shipId!==ship.id)return 1000000000;const q=quality(p,slot.name,shuttleActive);const shipPenalty=p.shipPref&&p.shipPref!==ship.id?10:0;const firstCome=(orderMap.get(p.id)||0)*0.001;return qScore(q)+shipPenalty+firstCome+stableTie(p.id,ship.id,slot.name);}));
+  const chosen=hungarian(matrix);const assignments=ordered.map((p,i)=>{const slot=slots[chosen[i]],q=quality(p,slot.name,shuttleActive);return{playerId:p.id,name:p.name,shipId:ship.id,role:slot.name,team:slot.team,teamName:slot.teamName,quality:q,shipMet:!p.shipPref||p.shipPref===ship.id,forced:Boolean(getOverride(mission,p.id)?.role)};});
   return{assignments,allowed};
 }
 function computePlan(players,mission){
@@ -122,10 +187,12 @@ function setupCheckHandlers(prefix=""){
 }
 function renderPlan(plan,mission,{organiser=false,ownId=""}={}){
   const chips=TEAMS.map(t=>`<span class="team-chip ${teamClass(t.id)}">${t.name}</span>`).join("");
-  const ships=plan.byShip.map((group,idx)=>{const assignmentMap=new Map(group.assignments.map(a=>[a.role,a]));const allowed=new Set(group.allowed);const forcedExtra=new Set(group.assignments.filter(a=>a.forced).map(a=>a.role));const showRoles=ROLE_NAMES.filter(r=>allowed.has(r)||forcedExtra.has(r));
-    let rows="";for(const t of TEAMS){const teamRoles=showRoles.filter(r=>roleFor(r).team===t.id);if(!teamRoles.length)continue;rows+=`<div class="team-heading ${teamClass(t.id)}">${t.name}</div>`;for(const role of teamRoles){const a=assignmentMap.get(role);const own=a?.playerId===ownId;rows+=`<div class="station ${teamClass(t.id)}"><div class="station-top"><span class="station-role">${esc(role)}</span><span class="station-state">${a?"Filled for now":"To be decided"}</span></div><div class="station-name${a?"":" empty"}${a?.quality.kind==="avoid"?" avoid":""}">${a?esc(a.name):"To be decided"}</div>${organiser&&a?`<div class="quality-note">${esc(a.quality.label)}${a.shipMet?"":" · different ship preference"}${a.forced?" · fixed by organiser":""}</div>`:own&&a?`<div class="quality-note">Your current suggestion · ${esc(a.quality.label)}</div>`:""}</div>`;}}
-    return `<section class="ship-card"><div class="ship-head"><div><div class="ship-title${group.ship.name?.trim()?"":" unnamed"}">${esc(displayShip(group.ship,idx))}</div></div><div class="ship-count">${group.players.length} crew</div></div>${rows}</section>`;}).join("");
-  return `<div class="team-key">${chips}</div><div class="crew-grid">${ships}</div>`;
+  const ships=plan.byShip.map((group,idx)=>{const assignmentMap=new Map(group.assignments.map(a=>[a.role,a]));const allowed=new Set(group.allowed);const forcedExtra=new Set(group.assignments.filter(a=>a.forced).map(a=>a.role));const showRoles=[...ROLE_NAMES];
+    let rows="";for(const t of TEAMS){const teamRoles=showRoles.filter(r=>roleFor(r).team===t.id);rows+=`<div class="team-heading ${teamClass(t.id)}">${t.name}</div>`;for(const role of teamRoles){const a=assignmentMap.get(role);const own=a?.playerId===ownId;const inactive=!allowed.has(role)&&!forcedExtra.has(role);const state=a?"Filled for now":inactive?"Not in use":"To be decided";const name=a?esc(a.name):inactive?"Shuttle available from 11 crew":"To be decided";rows+=`<div class="station ${teamClass(t.id)}${inactive?" inactive":""}"><div class="station-top"><span class="station-role">${esc(role)}</span><span class="station-state">${state}</span></div><div class="station-name${a?"":" empty"}${a?.quality.kind==="avoid"?" avoid":""}">${name}</div>${organiser&&a?`<div class="quality-note">${esc(a.quality.label)}${a.shipMet?"":" · different ship preference"}${a.forced?" · fixed by organiser":""}</div>`:own&&a?`<div class="quality-note">Your current suggestion · ${esc(a.quality.label)}</div>`:""}</div>`;}}
+    const badge=shipBadgeUrl(group.ship);return `<section class="ship-card ${shipClass(group.ship)}"><div class="ship-head"><div class="ship-identity">${badge?`<img class="ship-badge" src="${esc(badge)}" alt="${esc(displayShip(group.ship,idx))} badge">`:""}<div class="ship-title${group.ship.name?.trim()?"":" unnamed"}">${esc(displayShip(group.ship,idx))}</div></div><div class="ship-count">${group.players.length} crew</div></div>${rows}</section>`;}).join("");
+  const hasInactiveShuttle=plan.byShip.some(group=>group.players.length<11);
+  const fallbackNote=hasInactiveShuttle?`<div class="shuttle-fallback-note"><b>Shuttle activates at 11 crew.</b> All main-ship stations, including Dock and drone, remain available. Until shuttle activates, shuttle choices are remembered and count toward equivalent main-ship roles: XO → Captain, Shuttle helm → Helm, Shuttle engineer → Engineering, Shuttle generalist → Beams or Missiles.</div>`:"";
+  return `<div class="team-key">${chips}</div>${fallbackNote}<div class="crew-grid">${ships}</div>`;
 }
 function playerRules(){return `<div class="rules"><div class="rule"><span class="rule-num">1</span><span><b>First come, first served</b> is used only when two people are otherwise tied for the same place.</span></div><div class="rule"><span class="rule-num">2</span><span><b>The crew can move around</b> while people are still adding preferences. Every new response can change the best overall suggestion.</span></div><div class="rule"><span class="rule-num">3</span><span><b>This is a planning aid.</b> The organiser can make the final call and the suggested crew does not have to be followed.</span></div></div>`;}
 
@@ -189,11 +256,25 @@ async function finishOrganiserEmailLink(email){
 function renderEmailLinkCompletion(errorText=""){
   topActions.innerHTML=`<span class="pill organiser">Organiser sign in</span>`;
   main.innerHTML=`<div class="page-head"><div><div class="eyebrow">Email sign-in</div><h1>Confirm your email</h1><p class="sub">This sign-in link was opened on a different browser or device. Enter the same email address the link was sent to.</p></div></div><section class="panel" style="max-width:620px"><form id="completeEmailLinkForm"><div class="field"><label>Email address</label><input id="completeEmail" type="email" autocomplete="email" required></div><button class="btn primary" type="submit">Finish sign in</button><div id="completeEmailMessage" class="message${errorText?" error":""}">${esc(errorText)}</div></form></section>`;
-  $("#completeEmailLinkForm").onsubmit=async e=>{e.preventDefault();setMessage($("#completeEmailMessage"),"Signing in…");try{await finishOrganiserEmailLink($("#completeEmail").value);}catch(ex){setMessage($("#completeEmailMessage"),friendlyAuthError(ex),"error");}};
+  $("#completeEmailLinkForm").onsubmit=async e=>{
+    e.preventDefault();
+    const message=$("#completeEmailMessage");
+    setMessage(message,"Confirming your email…");
+    try{
+      await finishOrganiserEmailLink($("#completeEmail").value);
+      setMessage(message,"Signed in. Opening your missions…","ok");
+      // On a different device boot() deliberately stopped here so the organiser
+      // could confirm their email. Reload once after successful completion so the
+      // normal Firebase auth-state listener starts and opens the dashboard.
+      window.location.reload();
+    }catch(ex){
+      setMessage(message,friendlyAuthError(ex),"error");
+    }
+  };
 }
 function renderAccountLanding(){
   topActions.innerHTML="";
-  main.innerHTML=`<div class="page-head"><div><div class="eyebrow">Bridge Command crew planner</div><h1>Organiser access</h1><p class="sub">Create a deployment, send your players their unique crew link, and manage the suggested assignments as responses arrive.</p></div></div><div class="landing-stack"><section class="panel green organiser-primary"><div class="eyebrow">New or returning organiser</div><h2>Sign in with your email</h2><p class="sub">No password needed. Enter your email and we'll send a secure sign-in link. Your first sign-in automatically creates your organiser account.</p><form id="magicLinkForm"><div class="field"><label>Email address</label><input id="magicEmail" type="email" autocomplete="email" required placeholder="you@example.com"></div><button class="btn success" type="submit">Email me a sign-in link</button><div id="magicMessage" class="message"></div></form></section><section class="player-link-note"><div><b>Joining a crew?</b><span>Use the unique link your organiser sent you. Players do not need an account or password.</span></div></section><details class="admin-access"><summary>Administrator sign in</summary><div class="admin-access-body"><p class="sub">Administrator access only.</p><form id="loginForm"><div class="admin-login-fields"><div class="field"><label>Email</label><input id="loginEmail" type="email" autocomplete="username" required></div><div class="field"><label>Password</label><input id="loginPassword" type="password" autocomplete="current-password" required></div><button class="btn ghost" type="submit">Admin sign in</button></div><div id="loginMessage" class="message"></div></form></div></details></div>`;
+  main.innerHTML=`<div class="page-head"><div><div class="eyebrow">Interstellar Deployment Planner</div><h1>Organiser access</h1><p class="sub">Create a deployment, send your players their unique crew link, and manage the suggested assignments as responses arrive.</p></div></div><div class="landing-stack"><section class="panel green organiser-primary"><div class="eyebrow">New or returning organiser</div><h2>Sign in with your email</h2><p class="sub">No password needed. Enter your email and we'll send a secure sign-in link. Your first sign-in automatically creates your organiser account.</p><form id="magicLinkForm"><div class="field"><label>Email address</label><input id="magicEmail" type="email" autocomplete="email" required placeholder="you@example.com"></div><button class="btn success" type="submit">Email me a sign-in link</button><div id="magicMessage" class="message"></div></form></section><section class="player-link-note"><div><b>Joining a crew?</b><span>Use the unique link your organiser sent you. Players do not need an account or password.</span></div></section><details class="admin-access"><summary>Administrator sign in</summary><div class="admin-access-body"><p class="sub">Administrator access only.</p><form id="loginForm"><div class="admin-login-fields"><div class="field"><label>Email</label><input id="loginEmail" type="email" autocomplete="username" required></div><div class="field"><label>Password</label><input id="loginPassword" type="password" autocomplete="current-password" required></div><button class="btn ghost" type="submit">Admin sign in</button></div><div id="loginMessage" class="message"></div></form></div></details></div>`;
   $("#magicLinkForm").onsubmit=async e=>{e.preventDefault();const email=$("#magicEmail").value.trim();setMessage($("#magicMessage"),"Sending your sign-in link…");try{await sendOrganiserMagicLink(email);setMessage($("#magicMessage"),`Sign-in link sent to ${email}. Check your inbox and junk folder.`,"ok");}catch(ex){setMessage($("#magicMessage"),friendlyAuthError(ex),"error");}};
   $("#loginForm").onsubmit=async e=>{
     e.preventDefault();
@@ -215,7 +296,7 @@ async function renderOrganiserDashboard(){clearUnsubs();const q=query(collection
 function missionCard(m,admin){return `<section class="panel mission-card"><div class="mission-date">${esc(dateText(m.date))}</div><h2>${esc(missionTitle(m))}</h2><p class="sub">${m.shipCount||m.ships?.length||1} ship${(m.shipCount||m.ships?.length||1)===1?"":"s"}</p><div class="mission-meta"><span class="pill ${m.closed?"closed":"open"}">${m.closed?"Choices closed":"Choices open"}</span>${admin?`<span class="pill organiser">${esc(m.ownerName||"Organiser")}</span>`:""}</div><div class="share-box"><input readonly value="${esc(buildMissionLink(m.id))}" aria-label="Player link"><button class="btn ghost tiny" data-copy="${m.id}">Copy link</button></div><div class="actions"><button class="btn primary" data-manage="${m.id}">Manage crew</button>${admin?`<button class="btn danger" data-delete-mission="${m.id}">Delete</button>`:""}</div></section>`;}
 function buildMissionLink(id){return `${location.origin}${location.pathname}?m=${encodeURIComponent(id)}`;}
 async function copyMissionLink(id,button){const text=buildMissionLink(id);try{await navigator.clipboard.writeText(text);const old=button.textContent;button.textContent="Copied";setTimeout(()=>button.textContent=old,1500);}catch{prompt("Copy this player link:",text);}}
-function openMissionSetup(existing=null){const shipCount=existing?.ships?.length||1;showModal(`<button class="btn ghost tiny modal-close" data-close>Close</button><div class="eyebrow">Mission setup</div><h2>${existing?"Edit mission":"Create mission"}</h2><form id="missionSetupForm"><div class="field"><label>Mission / event name</label><input id="missionName" maxlength="100" value="${esc(existing?.title||"")}" placeholder="Optional"></div><div class="field"><label>Mission date</label><input id="missionDate" type="date" value="${esc(existing?.date||"")}" required></div><div class="field"><label>How many ships are running?</label><input id="shipCount" type="number" min="1" max="${MAX_SHIPS}" value="${shipCount}" required><small>One ship is the default. Each ship supports up to 14 crew.</small></div><div class="label">Ship names</div><p class="sub" style="margin-bottom:8px">Ship names are optional. Leave a box blank if the ship is unnamed.</p><div id="shipNameFields" class="setup-ships"></div><div class="actions"><button class="btn primary" type="submit">${existing?"Save mission":"Create mission"}</button></div><div id="missionSetupMessage" class="message"></div></form>`);const countEl=$("#shipCount");function draw(){const n=Math.max(1,Math.min(MAX_SHIPS,Number(countEl.value)||1));const current=[...document.querySelectorAll(".ship-name-input")].map(x=>x.value);$("#shipNameFields").innerHTML=Array.from({length:n},(_,i)=>`<label class="ship-name-row"><span>Ship ${i+1}</span><input class="ship-name-input" maxlength="60" value="${esc(current[i]??existing?.ships?.[i]?.name??"")}" placeholder="Optional name"></label>`).join("");}countEl.oninput=draw;draw();$("#missionSetupForm").onsubmit=async e=>{e.preventDefault();const n=Math.max(1,Math.min(MAX_SHIPS,Number(countEl.value)||1));const ships=Array.from({length:n},(_,i)=>({id:existing?.ships?.[i]?.id||`ship_${i+1}`,name:document.querySelectorAll(".ship-name-input")[i].value.trim()}));const payload={title:$("#missionName").value.trim(),date:$("#missionDate").value,shipCount:n,ships,closed:existing?.closed||false,overrides:existing?.overrides||{},updatedAt:serverTimestamp()};try{if(existing){await updateDoc(doc(db,"missions",existing.id),payload);}else{Object.assign(payload,{ownerUid:currentUser.uid,ownerName:currentUser.email||"Organiser",createdAt:serverTimestamp()});await addDoc(collection(db,"missions"),payload);}closeModal();currentRole==="admin"?renderAdminDashboard():renderOrganiserDashboard();}catch(ex){setMessage($("#missionSetupMessage"),ex.message,"error");}};}
+function openMissionSetup(existing=null){const shipCount=existing?.ships?.length||1;showModal(`<button class="btn ghost tiny modal-close" data-close>Close</button><div class="eyebrow">Mission setup</div><h2>${existing?"Edit mission":"Create mission"}</h2><form id="missionSetupForm"><div class="field"><label>Mission / event name</label><input id="missionName" maxlength="100" value="${esc(existing?.title||"")}" placeholder="Optional"></div><div class="field"><label>Mission date</label><input id="missionDate" type="date" value="${esc(existing?.date||"")}" required></div><div class="field"><label>How many ships are running?</label><input id="shipCount" type="number" min="1" max="${MAX_SHIPS}" value="${shipCount}" required><small>One ship is the default. Each ship supports up to 14 crew.</small></div><div class="label">Ships</div><p class="sub" style="margin-bottom:8px">Choose the Interstellar ship for each crew. If it is not known yet, choose Unknown.</p><div id="shipNameFields" class="setup-ships"></div><div class="actions"><button class="btn primary" type="submit">${existing?"Save mission":"Create mission"}</button></div><div id="missionSetupMessage" class="message"></div></form>`);const countEl=$("#shipCount");function shipPickOptions(value){const selected=["Takanami","Havock","Unknown"].includes(value)?value:"Unknown";return ["Takanami","Havock","Unknown"].map(name=>`<option value="${name}"${selected===name?" selected":""}>${name}</option>`).join("");}function draw(){const n=Math.max(1,Math.min(MAX_SHIPS,Number(countEl.value)||1));const current=[...document.querySelectorAll(".ship-name-input")].map(x=>x.value);$("#shipNameFields").innerHTML=Array.from({length:n},(_,i)=>{const value=current[i]??existing?.ships?.[i]?.name??"Unknown";const badge=shipBadgeUrl(value);return `<label class="ship-name-row"><span>Ship ${i+1}</span><div class="ship-picker-control"><img class="ship-picker-badge${badge?"":" hidden"}" ${badge?`src="${esc(badge)}"`:""} alt=""><select class="ship-name-input">${shipPickOptions(value)}</select></div></label>`;}).join("");document.querySelectorAll(".ship-name-row").forEach(row=>{const select=row.querySelector(".ship-name-input"),img=row.querySelector(".ship-picker-badge");select.addEventListener("change",()=>{const badge=shipBadgeUrl(select.value);if(badge){img.src=badge;img.classList.remove("hidden");}else{img.removeAttribute("src");img.classList.add("hidden");}});});}countEl.oninput=draw;draw();$("#missionSetupForm").onsubmit=async e=>{e.preventDefault();const n=Math.max(1,Math.min(MAX_SHIPS,Number(countEl.value)||1));const ships=Array.from({length:n},(_,i)=>({id:existing?.ships?.[i]?.id||`ship_${i+1}`,name:document.querySelectorAll(".ship-name-input")[i].value}));const payload={title:$("#missionName").value.trim(),date:$("#missionDate").value,shipCount:n,ships,closed:existing?.closed||false,overrides:existing?.overrides||{},updatedAt:serverTimestamp()};try{if(existing){await updateDoc(doc(db,"missions",existing.id),payload);}else{Object.assign(payload,{ownerUid:currentUser.uid,ownerName:currentRole==="admin"?"Administrator":(currentUser.email||"Organiser"),createdAt:serverTimestamp()});await addDoc(collection(db,"missions"),payload);}closeModal();currentRole==="admin"?renderAdminDashboard():renderOrganiserDashboard();}catch(ex){setMessage($("#missionSetupMessage"),ex.message,"error");}};}
 function showModal(content){document.body.insertAdjacentHTML("beforeend",`<div id="modalBackdrop" class="modal-backdrop"><div class="modal">${content}</div></div>`);$("#modalBackdrop").addEventListener("click",e=>{if(e.target.id==="modalBackdrop"||e.target.closest("[data-close]"))closeModal();});}
 function closeModal(){$("#modalBackdrop")?.remove();}
 
@@ -229,7 +310,7 @@ function openOrganiserPlayerEditor(player=null){const ov=player?getOverride(acti
     try{const ref=doc(db,"missions",activeMission.id,"players",id);if(player)await setDoc(ref,{...payload,updatedAt:serverTimestamp(),priorityAt:preferenceChanged(player,payload)?serverTimestamp():(player.priorityAt||player.createdAt||serverTimestamp()),createdAt:player.createdAt||serverTimestamp()},{merge:true});else await setDoc(ref,{...payload,source:"organiser",createdAt:serverTimestamp(),priorityAt:serverTimestamp(),updatedAt:serverTimestamp()});const overrides={...(activeMission.overrides||{})};if(fixedRole)overrides[id]={role:fixedRole,shipId:fixedShip||""};else delete overrides[id];await updateDoc(doc(db,"missions",activeMission.id),{overrides,updatedAt:serverTimestamp()});closeModal();}catch(ex){setMessage($("#orgPlayerMessage"),ex.message,"error");}};}
 function preferenceChanged(old,p){return old.shipPref!==p.shipPref||JSON.stringify(old.prefs||[])!==JSON.stringify(p.prefs)||JSON.stringify([...(old.dislikes||[])].sort())!==JSON.stringify([...p.dislikes].sort());}
 
-async function renderAdminDashboard(){clearUnsubs();const [missionSnap,profileSnap]=await Promise.all([getDocs(collection(db,"missions")),getDocs(collection(db,"profiles"))]);const profiles=new Map(profileSnap.docs.map(d=>[d.id,{id:d.id,...d.data()}]));const missions=missionSnap.docs.map(d=>{const x={id:d.id,...d.data()};x.ownerName=profiles.get(x.ownerUid)?.name||x.ownerName||"Organiser";return x;}).sort((a,b)=>String(a.date||"").localeCompare(String(b.date||"")));main.innerHTML=`<div class="page-head"><div><div class="eyebrow">Administrator</div><h1>All missions</h1><p class="sub">You can open and manage any organiser's mission.</p></div></div><div class="stat-row"><span class="stat"><b>${missions.length}</b> missions</span><span class="stat"><b>${profiles.size}</b> organisers</span></div><div class="grid cards">${missions.length?missions.map(m=>missionCard(m,true)).join(""):`<section class="empty-state"><h2>No missions yet</h2><p>Organiser-created missions will appear here.</p></section>`}</div>`;document.querySelectorAll("[data-manage]").forEach(b=>b.onclick=()=>openMissionManager(b.dataset.manage));document.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>copyMissionLink(b.dataset.copy,b));document.querySelectorAll("[data-delete-mission]").forEach(b=>b.onclick=async()=>{if(confirm("Delete this mission and all player responses?"))await deleteMissionCascade(b.dataset.deleteMission);});}
+async function renderAdminDashboard(){clearUnsubs();const [missionSnap,profileSnap]=await Promise.all([getDocs(collection(db,"missions")),getDocs(collection(db,"profiles"))]);const profiles=new Map(profileSnap.docs.map(d=>[d.id,{id:d.id,...d.data()}]));const missions=missionSnap.docs.map(d=>{const x={id:d.id,...d.data()};x.ownerName=profiles.get(x.ownerUid)?.name||x.ownerName||"Organiser";return x;}).sort((a,b)=>String(a.date||"").localeCompare(String(b.date||"")));main.innerHTML=`<div class="page-head"><div><div class="eyebrow">Administrator</div><h1>All missions</h1><p class="sub">Create your own missions or open and manage any organiser's mission.</p></div><button id="adminCreateMissionBtn" class="btn primary">Create mission</button></div><div class="stat-row"><span class="stat"><b>${missions.length}</b> missions</span><span class="stat"><b>${profiles.size}</b> organisers</span></div><div class="grid cards">${missions.length?missions.map(m=>missionCard(m,true)).join(""):`<section class="empty-state"><h2>No missions yet</h2><p>Create a mission yourself or wait for an organiser to create one.</p></section>`}</div>`;$("#adminCreateMissionBtn").onclick=()=>openMissionSetup();document.querySelectorAll("[data-manage]").forEach(b=>b.onclick=()=>openMissionManager(b.dataset.manage));document.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>copyMissionLink(b.dataset.copy,b));document.querySelectorAll("[data-delete-mission]").forEach(b=>b.onclick=async()=>{if(confirm("Delete this mission and all player responses?"))await deleteMissionCascade(b.dataset.deleteMission);});}
 async function deleteMissionCascade(id){const ps=await getDocs(collection(db,"missions",id,"players"));const batch=writeBatch(db);ps.docs.forEach(d=>batch.delete(d.ref));batch.delete(doc(db,"missions",id));await batch.commit();renderAdminDashboard();}
 
 function localProfilesKey(missionId){return `bcCrewProfiles:${missionId}`;}

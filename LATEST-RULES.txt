@@ -1,0 +1,27 @@
+Interstellar Deployment Planner — latest staffing rules
+
+Brand:
+- Visible site name is Interstellar Deployment Planner.
+- Bridge Command wording has been removed from the visible app.
+
+Stations:
+- All 14 stations are always displayed.
+- Dock and drone is always available, even with a small crew.
+- With 10 or fewer crew on a ship, only the four Shuttle stations are greyed/not in use.
+- At 11+ crew on a ship, all four Shuttle stations become available.
+- Organiser/Admin fixed assignments may still override an inactive shuttle station.
+
+Shuttle preference fallback while shuttle is inactive:
+- XO -> Captain
+- Shuttle helm -> Helm
+- Shuttle engineer -> Engineering
+- Shuttle generalist -> Beams or Missiles
+
+Players' original preferences are stored unchanged.
+
+Replace:
+- app.js
+- index.html
+- styles.css
+
+No Firebase or Firestore rules changes are required.
