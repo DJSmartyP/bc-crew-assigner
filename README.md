@@ -36,3 +36,8 @@ Station preference is prioritised ahead of ship preference. Matching role choice
 - Players: Firebase Anonymous Authentication behind the scenes.
 
 See `SETUP-GUIDE.md` for setup and publishing instructions.
+
+
+## Sign-in
+
+The normal homepage now contains both organiser magic-link sign-in and administrator email/password sign-in. Admin access is enforced by Firebase Authentication plus the configured Admin UID and Firestore rules; it does not rely on a hidden URL.

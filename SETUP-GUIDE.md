@@ -40,7 +40,7 @@ This build is locked to Admin UID:
 
 Admin login URL:
 
-`https://djsmartyp.github.io/bc-crew-assigner/?admin=1`
+`https://djsmartyp.github.io/bc-crew-assigner/`
 
 Do not share the Admin password.
 
@@ -76,7 +76,7 @@ Normal organiser URL:
 
 Admin URL:
 
-`https://djsmartyp.github.io/bc-crew-assigner/?admin=1`
+`https://djsmartyp.github.io/bc-crew-assigner/`
 
 ## 7. Test organiser magic-link sign-in
 
@@ -92,7 +92,7 @@ Admin URL:
 
 ### Admin
 
-- Open `?admin=1`.
+- Open the main site and use the **Admin sign in** panel.
 - Sign in with the Admin email/password account.
 - Confirm **All missions** is visible.
 
