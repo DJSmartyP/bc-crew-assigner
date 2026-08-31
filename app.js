@@ -140,8 +140,37 @@ async function boot(){
       catch(ex){renderEmailLinkCompletion(friendlyAuthError(ex));return;}
     }else{renderEmailLinkCompletion();return;}
   }
-  onAuthStateChanged(auth,async user=>{currentUser=user;if(!user){currentRole="";renderAccountLanding();return;}currentRole=user.uid===ADMIN_UID?"admin":"organiser";renderTopUser();if(currentRole==="admin")await renderAdminDashboard();else await ensureOrganiserProfileAndRender();});
+  onAuthStateChanged(auth,async user=>{
+    currentUser=user;
+    if(!user){currentRole="";renderAccountLanding();return;}
+    currentRole=user.uid===ADMIN_UID?"admin":"organiser";
+    renderTopUser();
+    try{
+      if(currentRole==="admin")await renderAdminDashboard();
+      else await ensureOrganiserProfileAndRender();
+    }catch(ex){
+      console.error("Could not load account dashboard",ex);
+      renderAccountLoadError(ex);
+    }
+  });
 }
+
+function renderAccountLoadError(ex){
+  const code=ex?.code||"";
+  let detail=ex?.message||"Firebase could not load your account.";
+  if(code.includes("permission-denied")){
+    detail="Your sign-in worked, but Firestore is blocking the dashboard. Publish the firestore.rules file from this project in Firebase → Firestore Database → Rules, then refresh this page.";
+  }else if(code.includes("failed-precondition")){
+    detail="Your sign-in worked, but Firestore is not ready yet. Make sure a Firestore database has been created for this Firebase project.";
+  }
+  main.innerHTML=`<section class="empty-state"><div class="eyebrow">Signed in, but dashboard could not load</div><h2>Firebase needs one more check</h2><p>${esc(detail)}</p><div class="actions" style="justify-content:center"><button id="retryDashboard" class="btn primary">Try again</button><button id="signOutAfterError" class="btn ghost">Sign out</button></div><p class="sub" style="margin-top:12px">Error code: ${esc(code||"unknown")}</p></section>`;
+  $("#retryDashboard").onclick=async()=>{
+    try{if(currentRole==="admin")await renderAdminDashboard();else await ensureOrganiserProfileAndRender();}
+    catch(err){console.error(err);renderAccountLoadError(err);}
+  };
+  $("#signOutAfterError").onclick=()=>signOut(auth);
+}
+
 function renderNeedsSetup(){topActions.innerHTML="";main.innerHTML=`<section class="empty-state"><div class="eyebrow">One-time setup needed</div><h2>The planner code is ready</h2><p>Create the new Firebase project, then put its config into <b>firebase-config.js</b>. The setup guide in the repo walks through it.</p></section>`;}
 function renderTopUser(){topActions.innerHTML=`<span class="pill ${currentRole}">${currentRole==="admin"?"Admin":"Organiser"}</span><button id="logoutBtn" class="btn ghost tiny">Sign out</button>`;$("#logoutBtn").onclick=()=>signOut(auth);}
 function organiserReturnUrl(){return `${location.origin}${location.pathname}`;}
@@ -166,7 +195,19 @@ function renderAccountLanding(){
   topActions.innerHTML=FORCE_ADMIN?`<span class="pill admin">Admin access</span>`:"";
   if(FORCE_ADMIN){
     main.innerHTML=`<div class="page-head"><div><div class="eyebrow">Crew planning console</div><h1>Admin sign in</h1><p class="sub">Sign in with the administrator account.</p></div></div><section class="panel" style="max-width:620px"><h2>Administrator</h2><form id="loginForm"><div class="field"><label>Email</label><input id="loginEmail" type="email" autocomplete="username" required></div><div class="field"><label>Password</label><input id="loginPassword" type="password" autocomplete="current-password" required></div><button class="btn primary" type="submit">Sign in</button><div id="loginMessage" class="message"></div></form></section>`;
-    $("#loginForm").onsubmit=async e=>{e.preventDefault();setMessage($("#loginMessage"),"Signing in…");try{await signInWithEmailAndPassword(auth,$("#loginEmail").value.trim(),$("#loginPassword").value);}catch(ex){setMessage($("#loginMessage"),friendlyAuthError(ex),"error");}};
+    $("#loginForm").onsubmit=async e=>{
+      e.preventDefault();
+      setMessage($("#loginMessage"),"Signing in…");
+      try{
+        const cred=await signInWithEmailAndPassword(auth,$("#loginEmail").value.trim(),$("#loginPassword").value);
+        if(cred.user.uid!==ADMIN_UID){
+          await signOut(auth);
+          setMessage($("#loginMessage"),"That account is not the administrator account for this planner.","error");
+          return;
+        }
+        setMessage($("#loginMessage"),"Signed in. Loading dashboard…","ok");
+      }catch(ex){setMessage($("#loginMessage"),friendlyAuthError(ex),"error");}
+    };
     return;
   }
   main.innerHTML=`<div class="page-head"><div><div class="eyebrow">Crew planning console</div><h1>Organiser access</h1><p class="sub">Create and manage your Bridge Command crew missions. No password needed.</p></div></div><div class="grid two"><section class="panel green"><h2>Email me a sign-in link</h2><p class="sub">Enter your email address and we'll send you a secure link. The same link flow works for new and returning organisers.</p><form id="magicLinkForm"><div class="field"><label>Email address</label><input id="magicEmail" type="email" autocomplete="email" required placeholder="you@example.com"></div><button class="btn success" type="submit">Send sign-in link</button><div id="magicMessage" class="message"></div></form></section><section class="panel"><h2>How it works</h2><div class="rules"><div class="rule"><span class="rule-num">1</span><span>Enter your email address.</span></div><div class="rule"><span class="rule-num">2</span><span>Open the sign-in email from Firebase.</span></div><div class="rule"><span class="rule-num">3</span><span>Click the link to return here and open <b>My missions</b>.</span></div></div><p class="sub">Administrator? <a href="?admin=1">Use the admin sign-in</a>.</p></section></div>`;
