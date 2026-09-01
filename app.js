@@ -1,7 +1,8 @@
 import { firebaseConfig, ADMIN_UID } from "./firebase-config.js";
 import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInAnonymously, signInWithEmailAndPassword, sendSignInLinkToEmail, isSignInWithEmailLink, signInWithEmailLink, signOut } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
-import { getFirestore, collection, doc, getDoc, getDocs, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, query, where, serverTimestamp, writeBatch } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
+import { getFirestore, collection, doc, getDoc, getDocs, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, query, where, serverTimestamp, writeBatch, runTransaction } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
+import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-functions.js";
 
 const $ = s => document.querySelector(s);
 const main = $("#main");
@@ -42,7 +43,7 @@ const CORE9 = ROLE_NAMES.filter(r=>r!=="Dock and drone" && !r.startsWith("Shuttl
 const MAIN10 = ROLE_NAMES.filter(r=>!r.startsWith("Shuttle") && r!=="XO");
 const configured = !Object.values(firebaseConfig).some(v=>String(v).startsWith("PASTE_"));
 
-let app, auth, db;
+let app, auth, db, functions;
 let currentUser = null;
 let currentRole = "";
 let activeMission = null;
@@ -63,7 +64,10 @@ function deploymentShipSummary(m){
 function dateText(v){if(!v)return "Date not set";const [y,m,d]=String(v).split("-").map(Number);if(!y||!m||!d)return v;return new Intl.DateTimeFormat("en-GB",{day:"numeric",month:"long",year:"numeric",timeZone:"UTC"}).format(new Date(Date.UTC(y,m-1,d)));}
 function timestampMs(value){if(!value)return Number.MAX_SAFE_INTEGER;if(typeof value.toMillis==="function")return value.toMillis();if(Number.isFinite(value.seconds))return value.seconds*1000+(value.nanoseconds||0)/1e6;const n=Date.parse(value);return Number.isFinite(n)?n:Number.MAX_SAFE_INTEGER;}
 function prioritySort(a,b){return timestampMs(a.priorityAt||a.createdAt)-timestampMs(b.priorityAt||b.createdAt)||String(a.id).localeCompare(String(b.id));}
-function normalizeName(s){return String(s||"").trim().toLocaleLowerCase().replace(/\s+/g," ");}
+function normalizeName(s){return String(s||"").normalize("NFKC").trim().toLocaleLowerCase().replace(/\s+/g," ");}
+function nameClaimId(name){return encodeURIComponent(normalizeName(name));}
+function nameClaimRef(dbInstance,deploymentId,name){return doc(dbInstance,"missions",deploymentId,"nameClaims",nameClaimId(name));}
+function duplicateNameMessage(name="That name"){return `${name} is already registered for this deployment. Please use a different name.`;}
 function randId(prefix="x"){return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,9)}`;}
 function setMessage(el,text,type=""){if(!el)return;el.textContent=text||"";el.className=`message${type?` ${type}`:""}`;}
 function clearUnsubs(){missionUnsubs.forEach(fn=>{try{fn();}catch{}});missionUnsubs=[];}
@@ -430,7 +434,7 @@ function playerRules(){return `<div class="rules"><div class="rule"><span class=
 
 async function boot(){
   if(!configured){renderNeedsSetup();return;}
-  app=initializeApp(firebaseConfig);auth=getAuth(app);db=getFirestore(app);
+  app=initializeApp(firebaseConfig);auth=getAuth(app);db=getFirestore(app);functions=getFunctions(app);
   if(missionParam){await bootPlayer(missionParam);return;}
   if(isSignInWithEmailLink(auth,window.location.href)){
     const savedEmail=localStorage.getItem("bcCrewOrganiserEmail");
@@ -476,8 +480,22 @@ function organiserReturnUrl(){return `${location.origin}${location.pathname}`;}
 async function sendOrganiserMagicLink(email){
   const address=String(email||"").trim();
   if(!address)throw new Error("Enter your email address.");
-  await sendSignInLinkToEmail(auth,address,{url:organiserReturnUrl(),handleCodeInApp:true});
+  let delivery="firebase";
+  try{
+    const sendBranded=httpsCallable(functions,"sendOrganiserSignInLink");
+    const result=await sendBranded({email:address,continueUrl:organiserReturnUrl()});
+    if(result?.data?.sent)delivery="branded";
+    else throw new Error("Branded email service did not confirm delivery.");
+  }catch(ex){
+    const code=String(ex?.code||"");
+    // Before the optional branded mail function is configured/deployed, keep
+    // the existing Firebase email-link flow working as a safe fallback.
+    if(code.includes("resource-exhausted"))throw ex;
+    console.warn("Branded sign-in email unavailable; using Firebase template.",ex);
+    await sendSignInLinkToEmail(auth,address,{url:organiserReturnUrl(),handleCodeInApp:true});
+  }
   localStorage.setItem("bcCrewOrganiserEmail",address);
+  return delivery;
 }
 async function finishOrganiserEmailLink(email){
   const cred=await signInWithEmailLink(auth,String(email||"").trim(),window.location.href);
@@ -506,8 +524,8 @@ function renderEmailLinkCompletion(errorText=""){
 }
 function renderAccountLanding(){
   topActions.innerHTML="";
-  main.innerHTML=`<section class="login-hero"><div class="login-intro"><div class="eyebrow">Interstellar Deployment Planner</div><h1>Build the right crew for every deployment</h1><p class="login-lead">Collect ranked crew preferences, balance stations across ships, and keep one live suggested deployment plan as responses change.</p></div><div class="login-layout"><div class="login-column"><section class="panel green organiser-primary"><div class="eyebrow">New or returning organiser</div><h2>Sign in with your email</h2><p class="sub">No password needed. Enter your email and we'll send a secure sign-in link. Your first sign-in automatically creates your organiser account.</p><form id="magicLinkForm"><div class="field"><label>Email address</label><input id="magicEmail" type="email" autocomplete="email" required placeholder="you@example.com"></div><button class="btn success" type="submit">Email me a sign-in link</button><div id="magicMessage" class="message"></div></form></section><section class="player-link-note"><div><b>Joining a crew?</b><span>Use the unique deployment link your organiser sent you. Players do not need an account or password.</span></div></section><details class="admin-access"><summary>Administrator sign in</summary><div class="admin-access-body"><p class="sub">Administrator access only.</p><form id="loginForm"><div class="admin-login-fields"><div class="field"><label>Email</label><input id="loginEmail" type="email" autocomplete="username" required></div><div class="field"><label>Password</label><input id="loginPassword" type="password" autocomplete="current-password" required></div><button class="btn ghost" type="submit">Admin sign in</button></div><div id="loginMessage" class="message"></div></form></div></details></div><aside class="panel feature-panel"><div class="eyebrow">Deployment control</div><h2>What the planner can do</h2><p class="sub feature-intro">Everything an organiser needs to turn a group of preferences into a workable crew plan.</p><div class="feature-list"><div class="feature-item"><span class="feature-index">01</span><div><b>Create deployments</b><span>Set the deployment date and choose the ship in use. Two-ship deployments automatically use Takanami and Havock.</span></div></div><div class="feature-item"><span class="feature-index">02</span><div><b>Send one player link</b><span>Every deployment gets its own unique link. Players open it and submit choices without creating an account.</span></div></div><div class="feature-item"><span class="feature-index">03</span><div><b>Collect real preferences</b><span>Players rank three stations, choose a preferred ship, and flag roles they really do not want.</span></div></div><div class="feature-item"><span class="feature-index">04</span><div><b>Rebalance automatically</b><span>The suggested crew is recalculated whenever preferences change, aiming to satisfy the group as a whole.</span></div></div><div class="feature-item"><span class="feature-index">05</span><div><b>Adapt to crew size</b><span>All stations stay visible. Shuttle stays inactive at 10 crew or fewer and shuttle choices map to useful main-ship equivalents.</span></div></div><div class="feature-item"><span class="feature-index">06</span><div><b>Stay in control</b><span>Add or edit players, close choices, and lock a person to a specific station or ship when the deployment needs it.</span></div></div></div></aside></div></section>`;
-  $("#magicLinkForm").onsubmit=async e=>{e.preventDefault();const email=$("#magicEmail").value.trim();setMessage($("#magicMessage"),"Sending your sign-in link…");try{await sendOrganiserMagicLink(email);setMessage($("#magicMessage"),`Sign-in link sent to ${email}. Check your inbox and junk folder.`,"ok");}catch(ex){setMessage($("#magicMessage"),friendlyAuthError(ex),"error");}};
+  main.innerHTML=`<section class="login-hero"><div class="login-intro"><div class="eyebrow">Interstellar Deployment Planner</div><h1>Build the right crew for every deployment</h1><p class="login-lead">Collect ranked crew preferences, balance stations across ships, and keep one live suggested deployment plan as responses change.</p></div><div class="login-layout"><div class="login-column"><section class="panel green organiser-primary"><div class="eyebrow">New or returning organiser</div><h2>Sign in with your email</h2><p class="sub">No password needed. Enter your email and we'll send a secure sign-in link. Your first sign-in automatically creates your organiser account.</p><form id="magicLinkForm"><div class="field"><label>Email address</label><input id="magicEmail" type="email" autocomplete="email" required placeholder="you@example.com"></div><button class="btn success" type="submit">Email me a sign-in link</button><div id="magicMessage" class="message"></div></form></section><section class="player-link-note"><div><b>Joining a crew?</b><span>Use the unique deployment link your organiser sent you. Players do not need an account or password.</span></div></section><details class="admin-access"><summary>Administrator sign in</summary><div class="admin-access-body"><p class="sub">Administrator access only.</p><form id="loginForm"><div class="admin-login-fields"><div class="field"><label>Email</label><input id="loginEmail" type="email" autocomplete="username" required></div><div class="field"><label>Password</label><input id="loginPassword" type="password" autocomplete="current-password" required></div><button class="btn ghost" type="submit">Admin sign in</button></div><div id="loginMessage" class="message"></div></form></div></details></div><aside class="panel feature-panel"><div class="eyebrow">Deployment control</div><h2>What the planner can do</h2><p class="sub feature-intro">Everything an organiser needs to turn a group of preferences into a workable crew plan.</p><div class="feature-list"><div class="feature-item"><span class="feature-index">01</span><div><b>Create deployments</b><span>Set the deployment date and choose the ship in use. Two-ship deployments automatically use Takanami and Havock.</span></div></div><div class="feature-item"><span class="feature-index">02</span><div><b>Send one player link</b><span>Every deployment gets its own unique link. Players open it and submit choices without creating an account.</span></div></div><div class="feature-item"><span class="feature-index">03</span><div><b>Collect real preferences</b><span>Players rank three stations, choose a preferred ship, and flag roles they really do not want.</span></div></div><div class="feature-item"><span class="feature-index">04</span><div><b>Rebalance automatically</b><span>The suggested crew is recalculated whenever preferences change, aiming to satisfy the group as a whole.</span></div></div><div class="feature-item"><span class="feature-index">05</span><div><b>Adapt to crew size</b><span>All stations stay visible. Shuttle availability responds to crew size and the organiser’s ship-balance setting, while early Shuttle preferences still map to useful main-ship equivalents.</span></div></div><div class="feature-item"><span class="feature-index">06</span><div><b>Stay in control</b><span>Add or edit players, close choices, and lock a person to a specific station or ship when the deployment needs it.</span></div></div><div class="feature-item"><span class="feature-index">07</span><div><b>Export a crew PDF</b><span>Generate a sci-fi crew manifest with one page per ship, ready to brief or print.</span></div></div></div></aside></div></section>`;
+  $("#magicLinkForm").onsubmit=async e=>{e.preventDefault();const email=$("#magicEmail").value.trim();setMessage($("#magicMessage"),"Sending your sign-in link…");try{const delivery=await sendOrganiserMagicLink(email);setMessage($("#magicMessage"),delivery==="branded"?`Interstellar Deployment Planner sign-in email sent to ${email}. Check your inbox and junk folder.`:`Sign-in link sent to ${email}. Check your inbox and junk folder.`,"ok");}catch(ex){setMessage($("#magicMessage"),friendlyAuthError(ex),"error");}};
   $("#loginForm").onsubmit=async e=>{
     e.preventDefault();
     setMessage($("#loginMessage"),"Signing in…");
@@ -525,53 +543,57 @@ function renderAccountLanding(){
 function friendlyAuthError(ex){const code=ex?.code||"";if(code.includes("invalid-credential"))return "That email or password wasn't recognised.";if(code.includes("invalid-email"))return "Check the email address.";if(code.includes("expired-action-code"))return "That sign-in link has expired. Request a new one.";if(code.includes("invalid-action-code"))return "That sign-in link is no longer valid. Request a new one.";if(code.includes("unauthorized-domain"))return "This website domain is not yet authorised in Firebase Authentication.";if(code.includes("operation-not-allowed"))return "Email-link sign in is not enabled in Firebase yet.";return ex?.message||"Something went wrong. Please try again.";}
 async function ensureOrganiserProfileAndRender(){const ref=doc(db,"profiles",currentUser.uid),snap=await getDoc(ref);if(!snap.exists())await setDoc(ref,{name:currentUser.email?.split("@")[0]||"Organiser",email:currentUser.email||"",role:"organiser",createdAt:serverTimestamp()});await renderOrganiserDashboard();}
 async function renderOrganiserDashboard(){clearUnsubs();const q=query(collection(db,"missions"),where("ownerUid","==",currentUser.uid));const snap=await getDocs(q);const missions=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(a.date||"").localeCompare(String(b.date||"")));main.innerHTML=`<div class="page-head"><div><div class="eyebrow">Organiser dashboard</div><h1>My deployments</h1><p class="sub">Create a deployment, share its player link, then manage the crew as preferences arrive.</p></div><button id="createMissionBtn" class="btn primary">Create deployment</button></div><div id="missionCards" class="grid cards">${missions.length?missions.map(m=>missionCard(m,false)).join(""):`<section class="empty-state"><h2>No deployments yet</h2><p>Create your first deployment to get a player preference link.</p></section>`}</div>`;$("#createMissionBtn").onclick=()=>openMissionSetup();document.querySelectorAll("[data-manage]").forEach(b=>b.onclick=()=>openMissionManager(b.dataset.manage));document.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>copyMissionLink(b.dataset.copy,b));}
-function missionCard(m,admin){return `<section class="panel mission-card"><div class="mission-date">${esc(dateText(m.date))}</div><h2>${esc(missionTitle(m))}</h2><p class="sub">${esc(deploymentShipSummary(m))}${Number.isFinite(m.responseCount)?` · ${m.responseCount} response${m.responseCount===1?"":"s"}`:""}</p><div class="mission-meta"><span class="pill ${m.closed?"closed":"open"}">${m.closed?"Choices closed":"Choices open"}</span>${admin?`<span class="pill organiser">${esc(m.ownerName||"Organiser")}</span>`:""}</div><div class="share-box"><input readonly value="${esc(buildMissionLink(m.id))}" aria-label="Player link"><button class="btn ghost tiny" data-copy="${m.id}">Copy link</button></div><div class="actions"><button class="btn primary" data-manage="${m.id}">Manage crew</button>${admin?`<button class="btn danger" data-delete-mission="${m.id}">Delete</button>`:""}</div></section>`;}
+function missionCard(m,admin){return `<section class="panel mission-card"><div class="mission-date">${esc(dateText(m.date))}</div><h2>${esc(missionTitle(m))}</h2><p class="sub">${esc(deploymentShipSummary(m))}${Number.isFinite(m.responseCount)?` · ${m.responseCount} response${m.responseCount===1?"":"s"}`:""}</p><div class="mission-meta"><span class="pill ${m.closed?"closed":"open"}">${m.closed?"Choices closed":"Choices open"}</span>${admin?`<span class="pill organiser">${esc(m.ownerName||"Organiser")}</span>`:""}</div><div class="share-box"><input readonly value="${esc(buildMissionLink(m.id))}" aria-label="Player link"><button class="btn ghost tiny" data-copy="${m.id}">Copy link</button></div><div class="actions"><button class="btn primary" data-manage="${m.id}">Manage crew</button>${admin?`<button class="btn ghost" data-transfer-mission="${m.id}">Change organiser</button><button class="btn danger" data-delete-mission="${m.id}">Delete</button>`:""}</div></section>`;}
 function buildMissionLink(id){return `${location.origin}${location.pathname}?m=${encodeURIComponent(id)}`;}
 async function copyMissionLink(id,button){const text=buildMissionLink(id);try{await navigator.clipboard.writeText(text);const old=button.textContent;button.textContent="Copied";setTimeout(()=>button.textContent=old,1500);}catch{prompt("Copy this player link:",text);}}
-function openMissionSetup(existing=null){
+async function adminOwnerOptions(selectedUid=""){
+  if(currentRole!=="admin")return"";
+  const snap=await getDocs(collection(db,"profiles"));
+  const profiles=snap.docs.map(d=>({id:d.id,...d.data()})).filter(p=>p.role==="organiser").sort((a,b)=>String(a.email||a.name||"").localeCompare(String(b.email||b.name||"")));
+  const opts=[`<option value="${esc(ADMIN_UID)}"${selectedUid===ADMIN_UID?" selected":""}>Administrator</option>`];
+  for(const p of profiles){const label=p.name&&p.email?`${p.name} — ${p.email}`:(p.email||p.name||p.id);opts.push(`<option value="${esc(p.id)}"${selectedUid===p.id?" selected":""}>${esc(label)}</option>`);}
+  return opts.join("");
+}
+async function ownerDisplay(uid){
+  if(uid===ADMIN_UID)return{name:"Administrator",email:""};
+  const snap=await getDoc(doc(db,"profiles",uid));
+  if(!snap.exists())return{name:"Organiser",email:""};
+  const p=snap.data();return{name:p.name||p.email||"Organiser",email:p.email||""};
+}
+async function openMissionSetup(existing=null){
   const initialCount=Math.max(1,Math.min(2,existing?.ships?.length||1));
   const existingSingle=existing?.ships?.[0]?.name;
   let singleShip=["Takanami","Havock","Unknown"].includes(existingSingle)?existingSingle:"Unknown";
   let balanceShips=existing?.balanceShips!==false;
-  showModal(`<button class="btn ghost tiny modal-close" data-close>Close</button><div class="setup-heading"><div><div class="eyebrow">Deployment setup</div><h2>${existing?"Edit deployment":"Create deployment"}</h2><p class="sub">Set the event details and choose the ship or ships running this deployment.</p></div></div><form id="missionSetupForm" class="deployment-setup-form"><div class="setup-main-fields"><div class="field"><label>Deployment / event name</label><input id="missionName" maxlength="100" value="${esc(existing?.title||"")}" placeholder="e.g. Saturday evening crew"></div><div class="field"><label>Deployment date</label><input id="missionDate" type="date" value="${esc(existing?.date||"")}" required></div></div><div class="setup-section"><div class="setup-section-head"><div><div class="label">How many ships?</div><p class="sub">Choose one ship, or run Takanami and Havock together.</p></div></div><div class="ship-count-choice" role="group" aria-label="Number of ships"><button class="ship-count-card${initialCount===1?" selected":""}" type="button" data-ship-count="1"><b>1</b><span>One ship</span></button><button class="ship-count-card${initialCount===2?" selected":""}" type="button" data-ship-count="2"><b>2</b><span>Takanami + Havock</span></button></div><input id="shipCount" type="hidden" value="${initialCount}"></div><div class="setup-section"><div class="setup-section-head"><div><div class="label">Ships in use</div><p id="shipChoiceHelp" class="sub"></p></div></div><div id="shipVisualPicker" class="ship-visual-picker"></div></div><div id="balanceShipsSection" class="setup-section${initialCount===2?"":" hidden"}"><div class="setup-section-head"><div><div class="label">Balance ships?</div><p class="sub">Choose whether equal ship numbers are an operational priority or whether station preferences should be allowed to create a more uneven split.</p></div></div><div class="balance-choice" role="group" aria-label="Balance ships"><button type="button" class="balance-card${balanceShips?" selected":""}" data-balance-choice="yes"><b>Yes — keep them even</b><span>Keep crew numbers as balanced as possible. Shuttle stays unavailable through response 20; response 21 triggers a full recalculation and can open Shuttle on the 11-crew ship.</span></button><button type="button" class="balance-card${balanceShips?"":" selected"}" data-balance-choice="no"><b>No — optimise freely</b><span>Prioritise the best station matches. Shuttle can open as soon as either ship reaches 11 crew, with a gentle preference for spreading people when outcomes are otherwise similar.</span></button></div></div><div class="setup-lock-note"><div class="lock-symbol">◆</div><div><b>Need to guarantee a station?</b><span>After players respond, the organiser can lock anyone to a station, or to an exact ship + station. Locked assignments are treated as hard constraints by the crew planner.</span></div></div><div class="actions setup-actions"><button class="btn primary" type="submit">${existing?"Save deployment":"Create deployment"}</button></div><div id="missionSetupMessage" class="message"></div></form>`);
-  const countEl=$("#shipCount");
-  const picker=$("#shipVisualPicker");
-  const help=$("#shipChoiceHelp");
-  const balanceSection=$("#balanceShipsSection");
+  const selectedOwner=existing?.ownerUid||(currentRole==="admin"?ADMIN_UID:currentUser.uid);
+  const ownerSelect=currentRole==="admin"?`<div class="setup-section admin-owner-section"><div class="setup-section-head"><div><div class="label">Deployment owner</div><p class="sub">Create this deployment under an organiser account, or transfer an existing deployment without changing its players or settings.</p></div></div><div class="field"><label>Organiser account</label><select id="missionOwner">${await adminOwnerOptions(selectedOwner)}</select></div></div>`:"";
+  showModal(`<button class="btn ghost tiny modal-close" data-close>Close</button><div class="setup-heading"><div><div class="eyebrow">Deployment setup</div><h2>${existing?"Edit deployment":"Create deployment"}</h2><p class="sub">Set the event details and choose the ship or ships running this deployment.</p></div></div><form id="missionSetupForm" class="deployment-setup-form"><div class="setup-main-fields"><div class="field"><label>Deployment / event name</label><input id="missionName" maxlength="100" value="${esc(existing?.title||"")}" placeholder="e.g. Saturday evening crew"></div><div class="field"><label>Deployment date</label><input id="missionDate" type="date" value="${esc(existing?.date||"")}" required></div></div>${ownerSelect}<div class="setup-section"><div class="setup-section-head"><div><div class="label">How many ships?</div><p class="sub">Choose one ship, or run Takanami and Havock together.</p></div></div><div class="ship-count-choice" role="group" aria-label="Number of ships"><button class="ship-count-card${initialCount===1?" selected":""}" type="button" data-ship-count="1"><b>1</b><span>One ship</span></button><button class="ship-count-card${initialCount===2?" selected":""}" type="button" data-ship-count="2"><b>2</b><span>Takanami + Havock</span></button></div><input id="shipCount" type="hidden" value="${initialCount}"></div><div class="setup-section"><div class="setup-section-head"><div><div class="label">Ships in use</div><p id="shipChoiceHelp" class="sub"></p></div></div><div id="shipVisualPicker" class="ship-visual-picker"></div></div><div id="balanceShipsSection" class="setup-section${initialCount===2?"":" hidden"}"><div class="setup-section-head"><div><div class="label">Balance ships?</div><p class="sub">Choose whether equal ship numbers are an operational priority or whether station preferences should be allowed to create a more uneven split.</p></div></div><div class="balance-choice" role="group" aria-label="Balance ships"><button type="button" class="balance-card${balanceShips?" selected":""}" data-balance-choice="yes"><b>Yes — keep them even</b><span>Keep crew numbers as balanced as possible. Shuttle stays unavailable through response 20; response 21 triggers a full recalculation and can open Shuttle on the 11-crew ship.</span></button><button type="button" class="balance-card${balanceShips?"":" selected"}" data-balance-choice="no"><b>No — optimise freely</b><span>Prioritise the best station matches. Shuttle can open as soon as either ship reaches 11 crew, with a gentle preference for spreading people when outcomes are otherwise similar.</span></button></div></div><div class="setup-lock-note"><div class="lock-symbol">◆</div><div><b>Need to guarantee a station?</b><span>After players respond, the organiser can lock anyone to a station, or to an exact ship + station. Locked assignments are treated as hard constraints by the crew planner.</span></div></div><div class="actions setup-actions"><button class="btn primary" type="submit">${existing?"Save deployment":"Create deployment"}</button></div><div id="missionSetupMessage" class="message"></div></form>`);
+  const countEl=$("#shipCount"),picker=$("#shipVisualPicker"),help=$("#shipChoiceHelp"),balanceSection=$("#balanceShipsSection");
   function shipTile(name,selected=false,locked=false){const badge=shipBadgeUrl(name);return `<button type="button" class="visual-ship-card ${shipClass({name})}${selected?" selected":""}${locked?" locked":""}" data-ship-choice="${esc(name)}"${locked?" disabled":""}>${badge?`<img src="${esc(badge)}" alt="">`:`<span class="unknown-ship-icon">?</span>`}<span class="visual-ship-name">${esc(name)}</span>${locked?`<small>Included</small>`:""}</button>`;}
-  function drawShips(){
-    const count=Number(countEl.value)||1;
-    document.querySelectorAll("[data-ship-count]").forEach(btn=>btn.classList.toggle("selected",Number(btn.dataset.shipCount)===count));
-    if(count===2){
-      help.textContent="Two-ship deployments automatically use both ships.";
-      picker.innerHTML=shipTile("Takanami",true,true)+shipTile("Havock",true,true);
-      balanceSection.classList.remove("hidden");
-    }else{
-      help.textContent="Tap the ship being used. Choose Unknown if it has not been confirmed yet.";
-      picker.innerHTML=["Takanami","Havock","Unknown"].map(name=>shipTile(name,name===singleShip,false)).join("");
-      picker.querySelectorAll("[data-ship-choice]").forEach(btn=>btn.onclick=()=>{singleShip=btn.dataset.shipChoice;drawShips();});
-      balanceSection.classList.add("hidden");
-    }
-  }
-  document.querySelectorAll("[data-balance-choice]").forEach(btn=>btn.onclick=()=>{
-    balanceShips=btn.dataset.balanceChoice==="yes";
-    document.querySelectorAll("[data-balance-choice]").forEach(x=>x.classList.toggle("selected",(x.dataset.balanceChoice==="yes")===balanceShips));
-  });
+  function drawShips(){const count=Number(countEl.value)||1;document.querySelectorAll("[data-ship-count]").forEach(btn=>btn.classList.toggle("selected",Number(btn.dataset.shipCount)===count));if(count===2){help.textContent="Two-ship deployments automatically use both ships.";picker.innerHTML=shipTile("Takanami",true,true)+shipTile("Havock",true,true);balanceSection.classList.remove("hidden");}else{help.textContent="Tap the ship being used. Choose Unknown if it has not been confirmed yet.";picker.innerHTML=["Takanami","Havock","Unknown"].map(name=>shipTile(name,name===singleShip,false)).join("");picker.querySelectorAll("[data-ship-choice]").forEach(btn=>btn.onclick=()=>{singleShip=btn.dataset.shipChoice;drawShips();});balanceSection.classList.add("hidden");}}
+  document.querySelectorAll("[data-balance-choice]").forEach(btn=>btn.onclick=()=>{balanceShips=btn.dataset.balanceChoice==="yes";document.querySelectorAll("[data-balance-choice]").forEach(x=>x.classList.toggle("selected",(x.dataset.balanceChoice==="yes")===balanceShips));});
   document.querySelectorAll("[data-ship-count]").forEach(btn=>btn.onclick=()=>{countEl.value=btn.dataset.shipCount;if(Number(btn.dataset.shipCount)===1&&existing?.ships?.length===1){const old=existing.ships[0]?.name;if(["Takanami","Havock","Unknown"].includes(old))singleShip=old;}drawShips();});
   drawShips();
   $("#missionSetupForm").onsubmit=async e=>{
-    e.preventDefault();
-    const n=Number(countEl.value)||1;
-    const names=n===2?["Takanami","Havock"]:[singleShip||"Unknown"];
-    const ships=names.map((name,i)=>({id:existing?.ships?.[i]?.id||`ship_${i+1}`,name}));
-    const payload={title:$("#missionName").value.trim(),date:$("#missionDate").value,shipCount:n,ships,balanceShips:n===2?balanceShips:false,closed:existing?.closed||false,overrides:existing?.overrides||{},updatedAt:serverTimestamp()};
+    e.preventDefault();const n=Number(countEl.value)||1,names=n===2?["Takanami","Havock"]:[singleShip||"Unknown"],ships=names.map((name,i)=>({id:existing?.ships?.[i]?.id||`ship_${i+1}`,name}));
+    const ownerUid=currentRole==="admin"?$("#missionOwner").value:currentUser.uid;
+    const owner=await ownerDisplay(ownerUid);
+    const payload={title:$("#missionName").value.trim(),date:$("#missionDate").value,shipCount:n,ships,balanceShips:n===2?balanceShips:false,closed:existing?.closed||false,overrides:existing?.overrides||{},ownerUid,ownerName:owner.name,updatedAt:serverTimestamp()};
     try{
+      if(existing&&currentRole==="admin"&&existing.ownerUid!==ownerUid&&!confirm(`Transfer this deployment to ${owner.name}? The previous organiser will no longer be able to manage it.`))return;
       if(existing)await updateDoc(doc(db,"missions",existing.id),payload);
-      else{Object.assign(payload,{ownerUid:currentUser.uid,ownerName:currentRole==="admin"?"Administrator":(currentUser.email||"Organiser"),createdAt:serverTimestamp()});await addDoc(collection(db,"missions"),payload);}
+      else{Object.assign(payload,{createdAt:serverTimestamp()});await addDoc(collection(db,"missions"),payload);}
       closeModal();currentRole==="admin"?renderAdminDashboard():renderOrganiserDashboard();
     }catch(ex){setMessage($("#missionSetupMessage"),ex.message,"error");}
   };
 }
+function openOwnerTransfer(mission){
+  (async()=>{
+    showModal(`<button class="btn ghost tiny modal-close" data-close>Close</button><div class="eyebrow">Administrator</div><h2>Change organiser</h2><p class="sub">Transfer <b>${esc(missionTitle(mission))}</b> without changing any players, preferences, assignments or deployment settings.</p><form id="ownerTransferForm"><div class="field"><label>New deployment owner</label><select id="transferOwner">${await adminOwnerOptions(mission.ownerUid)}</select></div><div class="message warn">The new owner will gain organiser control immediately. The previous organiser will no longer be able to manage this deployment.</div><div class="actions"><button class="btn primary" type="submit">Transfer deployment</button></div><div id="transferOwnerMessage" class="message"></div></form>`);
+    $("#ownerTransferForm").onsubmit=async e=>{e.preventDefault();const uid=$("#transferOwner").value;if(uid===mission.ownerUid){closeModal();return;}const owner=await ownerDisplay(uid);if(!confirm(`Transfer ${missionTitle(mission)} to ${owner.name}?`))return;try{await updateDoc(doc(db,"missions",mission.id),{ownerUid:uid,ownerName:owner.name,updatedAt:serverTimestamp()});closeModal();renderAdminDashboard();}catch(ex){setMessage($("#transferOwnerMessage"),ex.message,"error");}};
+  })();
+}
+
 function showModal(content){document.body.insertAdjacentHTML("beforeend",`<div id="modalBackdrop" class="modal-backdrop"><div class="modal">${content}</div></div>`);$("#modalBackdrop").addEventListener("click",e=>{if(e.target.id==="modalBackdrop"||e.target.closest("[data-close]"))closeModal();});}
 function closeModal(){$("#modalBackdrop")?.remove();}
 
@@ -934,151 +956,61 @@ async function generateCrewPdf(){
 function renderManagerShell(){const m=activeMission;main.innerHTML=`<div class="page-head"><div><button id="backDashboard" class="btn ghost tiny">← Dashboard</button><div class="eyebrow" style="margin-top:10px">Crew management</div><h1>${esc(missionTitle(m))}</h1><p class="sub">${esc(dateText(m.date))}</p></div><div class="actions"><button id="downloadCrewPdfBtn" class="btn primary">Download crew PDF</button><button id="editMissionBtn" class="btn ghost">Deployment setup</button><button id="closeChoicesBtn" class="btn ${m.closed?"success":"danger"}">${m.closed?"Reopen choices":"Close choices"}</button></div></div><div class="grid two"><aside><section class="panel sticky"><h2>Player link</h2><p class="sub">Send this link to everyone who should add their preferences.</p><div class="share-box"><input id="managerShareLink" readonly value="${esc(buildMissionLink(m.id))}"><button id="managerCopy" class="btn primary tiny">Copy link</button></div><div class="stat-row" id="managerStats"></div><div class="actions"><button id="addPlayerBtn" class="btn ghost">Add someone</button></div><div id="managerMessage" class="message"></div></section><section class="panel"><h2>Responses</h2><div id="responseList" class="response-list"></div></section></aside><section class="panel"><div class="eyebrow">Live suggestion</div><h2>Current crew plan</h2><p class="sub">The whole suggestion is recalculated whenever a preference changes. Fixed organiser choices are worked around automatically.</p><div id="managerPlan"></div></section></div>`;$("#backDashboard").onclick=()=>{clearUnsubs();currentRole==="admin"?renderAdminDashboard():renderOrganiserDashboard();};$("#downloadCrewPdfBtn").onclick=generateCrewPdf;$("#editMissionBtn").onclick=()=>openMissionSetup(activeMission);$("#managerCopy").onclick=()=>copyMissionLink(m.id,$("#managerCopy"));$("#closeChoicesBtn").onclick=async()=>{await updateDoc(doc(db,"missions",m.id),{closed:!activeMission.closed,updatedAt:serverTimestamp()});};$("#addPlayerBtn").onclick=()=>openOrganiserPlayerEditor();}
 function renderManagerState(){if(!activeMission||!$("#managerPlan"))return;const cap=(activeMission.ships?.length||1)*MAX_PER_SHIP,plan=computePlan(missionPlayers,activeMission);$("#closeChoicesBtn").textContent=activeMission.closed?"Reopen choices":"Close choices";$("#closeChoicesBtn").className=`btn ${activeMission.closed?"success":"danger"}`;$("#managerStats").innerHTML=`<span class="stat"><b>${missionPlayers.length}</b> responses</span><span class="stat"><b>${cap}</b> places</span><span class="stat"><b>${plan.metrics.first}</b> first choices</span>${plan.metrics.avoid?`<span class="stat"><b>${plan.metrics.avoid}</b> last-resort roles</span>`:""}`;setMessage($("#managerMessage"),plan.error||"",plan.error?"error":"");$("#managerPlan").innerHTML=renderPlan(plan,activeMission,{organiser:true});$("#responseList").innerHTML=missionPlayers.length?[...missionPlayers].sort(prioritySort).map(p=>responseRow(p)).join(""):`<p class="sub">No responses yet.</p>`;document.querySelectorAll("[data-edit-player]").forEach(b=>b.onclick=()=>openOrganiserPlayerEditor(missionPlayers.find(p=>p.id===b.dataset.editPlayer)));document.querySelectorAll("[data-delete-player]").forEach(b=>b.onclick=()=>deleteOrganiserPlayer(b.dataset.deletePlayer));}
 function responseRow(p){const ov=getOverride(activeMission,p.id);const pref=(p.prefs||[]).map(x=>x===FLEX?"No preference":x).join(" → ");const ship=p.shipPref?(activeMission.ships||[]).findIndex(s=>s.id===p.shipPref):-1;return `<div class="response-row"><div class="response-top"><div><div class="response-name">${esc(p.name)}</div><div class="response-meta">${ship>=0?`Ship: ${esc(displayShip(activeMission.ships[ship],ship))}`:"Ship: no preference"}<br>${esc(pref)}</div>${ov?.role?`<div class="fixed-note">Locked: ${esc(ov.role)}${ov.shipId?` · ${esc(displayShip(activeMission.ships.find(s=>s.id===ov.shipId),activeMission.ships.findIndex(s=>s.id===ov.shipId)))}`:" · either ship"}</div>`:""}</div><div class="actions"><button class="btn ghost tiny" data-edit-player="${p.id}">Edit</button><button class="btn danger tiny" data-delete-player="${p.id}">Delete</button></div></div></div>`;}
-async function deleteOrganiserPlayer(id){const p=missionPlayers.find(x=>x.id===id);if(!p||!confirm(`Delete ${p.name}'s response?`))return;await deleteDoc(doc(db,"missions",activeMission.id,"players",id));if(activeMission.overrides?.[id]){const overrides={...(activeMission.overrides||{})};delete overrides[id];await updateDoc(doc(db,"missions",activeMission.id),{overrides,updatedAt:serverTimestamp()});}}
+async function deleteOrganiserPlayer(id){const p=missionPlayers.find(x=>x.id===id);if(!p||!confirm(`Delete ${p.name}'s response?`))return;await runTransaction(db,async tx=>{tx.delete(doc(db,"missions",activeMission.id,"players",id));tx.delete(nameClaimRef(db,activeMission.id,p.name));});if(activeMission.overrides?.[id]){const overrides={...(activeMission.overrides||{})};delete overrides[id];await updateDoc(doc(db,"missions",activeMission.id),{overrides,updatedAt:serverTimestamp()});}}
 function openOrganiserPlayerEditor(player=null){const ov=player?getOverride(activeMission,player.id):null;const shipOptions=(activeMission.ships||[]).map((s,i)=>`<option value="${s.id}"${player?.shipPref===s.id?" selected":""}>${esc(displayShip(s,i))}</option>`).join("");const fixedShipOptions=(activeMission.ships||[]).map((s,i)=>`<option value="${s.id}"${ov?.shipId===s.id?" selected":""}>${esc(displayShip(s,i))}</option>`).join("");showModal(`<button class="btn ghost tiny modal-close" data-close>Close</button><div class="eyebrow">Organiser entry</div><h2>${player?`Edit ${esc(player.name)}`:"Add someone"}</h2><form id="orgPlayerForm"><div class="field"><label>Name</label><input id="orgName" value="${esc(player?.name||"")}" maxlength="60" required></div><div class="field"><label>Preferred ship</label><select id="orgShip"><option value="">No preference</option>${shipOptions}</select></div><div class="three-fields"><div class="field"><label>1st station</label><select id="orgPref1">${roleOptions(player?.prefs?.[0]||"")}</select></div><div class="field"><label>2nd station</label><select id="orgPref2">${roleOptions(player?.prefs?.[1]||"")}</select></div><div class="field"><label>3rd station</label><select id="orgPref3">${roleOptions(player?.prefs?.[2]||"")}</select></div></div><div class="label">Really don't want</div><div id="orgDislikes" class="checks">${checkboxes(player?.dislikes||[])}</div><hr style="border:0;border-top:1px solid var(--line);margin:15px 0"><div class="eyebrow">Optional locked assignment</div><div class="field"><label>Locked station</label><select id="orgFixedRole">${fixedRoleOptions(ov?.role||"")}</select><small>Leave this as No fixed assignment to let the planner decide normally. A locked station is a hard constraint.</small></div><div class="field"><label>Locked ship</label><select id="orgFixedShip"><option value="">Either ship</option>${fixedShipOptions}</select></div><div class="actions"><button class="btn primary" type="submit">Save</button></div><div id="orgPlayerMessage" class="message"></div></form>`);setupCheckHandlers("org");$("#orgPlayerForm").onsubmit=async e=>{e.preventDefault();const id=player?.id||randId("org");const payload={name:$("#orgName").value.trim(),shipPref:$("#orgShip").value,prefs:[$("#orgPref1").value,$("#orgPref2").value,$("#orgPref3").value],dislikes:readChecks($("#orgDislikes"))};const error=validatePrefs(payload,missionPlayers,player?.id||"");if(error){setMessage($("#orgPlayerMessage"),error,"error");return;}const fixedRole=$("#orgFixedRole").value,fixedShip=$("#orgFixedShip").value;if(fixedShip&&!fixedRole){setMessage($("#orgPlayerMessage"),"Choose a locked station before choosing a locked ship.","error");return;}if(fixedRole&&fixedShip){const clash=Object.entries(activeMission.overrides||{}).find(([pid,x])=>pid!==id&&x.role===fixedRole&&x.shipId===fixedShip);if(clash){setMessage($("#orgPlayerMessage"),"That exact ship + station is already locked to someone else.","error");return;}}
     if(fixedRole){const sameRole=Object.entries(activeMission.overrides||{}).filter(([pid,x])=>pid!==id&&x.role===fixedRole).length;if(sameRole>=(activeMission.ships?.length||1)){setMessage($("#orgPlayerMessage"),`There are only ${activeMission.ships?.length||1} copies of ${fixedRole} across this deployment. Remove another locked ${fixedRole} assignment first.`,"error");return;}}
-    try{const ref=doc(db,"missions",activeMission.id,"players",id);if(player)await setDoc(ref,{...payload,updatedAt:serverTimestamp(),priorityAt:preferenceChanged(player,payload)?serverTimestamp():(player.priorityAt||player.createdAt||serverTimestamp()),createdAt:player.createdAt||serverTimestamp()},{merge:true});else await setDoc(ref,{...payload,source:"organiser",createdAt:serverTimestamp(),priorityAt:serverTimestamp(),updatedAt:serverTimestamp()});const overrides={...(activeMission.overrides||{})};if(fixedRole)overrides[id]={role:fixedRole,shipId:fixedShip||""};else delete overrides[id];await updateDoc(doc(db,"missions",activeMission.id),{overrides,updatedAt:serverTimestamp()});closeModal();}catch(ex){setMessage($("#orgPlayerMessage"),ex.message,"error");}};}
+    try{const ref=doc(db,"missions",activeMission.id,"players",id);await runTransaction(db,async tx=>{
+      const newClaimRef=nameClaimRef(db,activeMission.id,payload.name),claim=await tx.get(newClaimRef);
+      if(claim.exists()&&claim.data()?.playerId!==id)throw new Error(duplicateNameMessage(payload.name));
+      tx.set(newClaimRef,{playerId:id,name:payload.name,updatedAt:serverTimestamp()},{merge:true});
+      if(player&&nameClaimId(player.name)!==nameClaimId(payload.name))tx.delete(nameClaimRef(db,activeMission.id,player.name));
+      if(player)tx.set(ref,{...payload,updatedAt:serverTimestamp(),priorityAt:preferenceChanged(player,payload)?serverTimestamp():(player.priorityAt||player.createdAt||serverTimestamp()),createdAt:player.createdAt||serverTimestamp()},{merge:true});
+      else tx.set(ref,{...payload,source:"organiser",createdAt:serverTimestamp(),priorityAt:serverTimestamp(),updatedAt:serverTimestamp()});
+    });const overrides={...(activeMission.overrides||{})};if(fixedRole)overrides[id]={role:fixedRole,shipId:fixedShip||""};else delete overrides[id];await updateDoc(doc(db,"missions",activeMission.id),{overrides,updatedAt:serverTimestamp()});closeModal();}catch(ex){setMessage($("#orgPlayerMessage"),ex.message,"error");}};}
 function preferenceChanged(old,p){return old.shipPref!==p.shipPref||JSON.stringify(old.prefs||[])!==JSON.stringify(p.prefs)||JSON.stringify([...(old.dislikes||[])].sort())!==JSON.stringify([...p.dislikes].sort());}
 
+function adminQualityText(a){
+  if(!a)return"Not currently assigned";
+  if(a.quality?.kind==="rank")return `${a.quality.rank}${a.quality.rank===1?"st":a.quality.rank===2?"nd":"rd"} choice`;
+  if(a.quality?.kind==="flex")return"Flexible / fill a gap";
+  if(a.quality?.kind==="avoid")return"Really don't want";
+  return"Other acceptable station";
+}
+function adminPlayerAssignmentRows(m){
+  const players=m.adminPlayers||[],plan=m.adminPlan;
+  if(!players.length)return`<p class="sub">No player responses yet.</p>`;
+  return [...players].sort(prioritySort).map(p=>{
+    const a=plan?.assignments?.find(x=>x.playerId===p.id),ship=a?(m.ships||[]).find(s=>s.id===a.shipId):null,shipIndex=ship?(m.ships||[]).findIndex(s=>s.id===a.shipId):-1;
+    const shipName=a?displayShip(ship,shipIndex):"—",quality=adminQualityText(a),shipPref=p.shipPref?(m.ships||[]).find(s=>s.id===p.shipPref):null,shipPrefIndex=shipPref?(m.ships||[]).findIndex(s=>s.id===p.shipPref):-1;
+    return `<div class="admin-assignment-row"><div><b>${esc(p.name)}</b><span>${a?`${esc(shipName)} · ${esc(a.role)}`:"Not currently assigned"}</span></div><div class="admin-assignment-result ${a?.quality?.kind==="avoid"?"avoid":""}">${esc(quality)}${p.shipPref?`<small>${a?.shipMet?"Ship preference met":`Preferred ${esc(displayShip(shipPref,shipPrefIndex))}`}</small>`:""}${a?.forced?`<small>Fixed by organiser</small>`:""}</div></div>`;
+  }).join("");
+}
+async function deleteOrganiserFromControlCentre(uid,label){
+  if(uid===ADMIN_UID){alert("The administrator account cannot be deleted here.");return;}
+  if(!confirm(`Delete ${label} and every deployment they own? This cannot be undone.`))return;
+  const typed=prompt(`Type DELETE to permanently remove ${label}, their deployments, player records and organiser sign-in account.`);
+  if(typed!=="DELETE")return;
+  try{const removeOrganiser=httpsCallable(functions,"deleteOrganiserAccount"),result=await removeOrganiser({uid});alert(`${label} deleted. ${result.data?.deploymentsDeleted||0} deployment(s) removed.`);await renderAdminDashboard();}catch(ex){alert(ex?.message||"Could not delete organiser. Make sure the deleteOrganiserAccount Cloud Function is deployed.");}
+}
 async function renderAdminDashboard(){
   clearUnsubs();
-
-  const [missionSnap,profileSnap]=await Promise.all([
-    getDocs(collection(db,"missions")),
-    getDocs(collection(db,"profiles"))
-  ]);
-
-  const profiles=profileSnap.docs
-    .map(d=>({id:d.id,...d.data()}))
-    .filter(p=>p.role==="organiser")
-    .sort((a,b)=>String(a.email||a.name||"").localeCompare(String(b.email||b.name||"")));
-
+  const [missionSnap,profileSnap]=await Promise.all([getDocs(collection(db,"missions")),getDocs(collection(db,"profiles"))]);
+  const profiles=profileSnap.docs.map(d=>({id:d.id,...d.data()})).filter(p=>p.role==="organiser").sort((a,b)=>String(a.email||a.name||"").localeCompare(String(b.email||b.name||"")));
   let missions=missionSnap.docs.map(d=>({id:d.id,...d.data()}));
-
-  // Admin use is low-volume, so fetching response counts here keeps the
-  // dashboard immediately useful without changing the stored deployment shape.
-  const responseCounts=await Promise.all(
-    missions.map(async m=>{
-      try{
-        const ps=await getDocs(collection(db,"missions",m.id,"players"));
-        return [m.id,ps.size];
-      }catch{
-        return [m.id,null];
-      }
-    })
-  );
-  const countMap=new Map(responseCounts);
-
-  const profileMap=new Map(profiles.map(p=>[p.id,p]));
-  missions=missions.map(m=>({
-    ...m,
-    ownerName:profileMap.get(m.ownerUid)?.name||m.ownerName||"Organiser",
-    ownerEmail:profileMap.get(m.ownerUid)?.email||"",
-    responseCount:countMap.get(m.id)
-  })).sort((a,b)=>String(a.date||"").localeCompare(String(b.date||"")));
-
-  const organiserCards=profiles.length
-    ?profiles.map(p=>{
-      const owned=missions.filter(m=>m.ownerUid===p.id);
-      const label=p.name||p.email||"Organiser";
-      const deployments=owned.length
-        ?owned.map(m=>`
-          <div class="admin-organiser-deployment">
-            <div class="admin-organiser-deployment-main">
-              <div>
-                <b>${esc(missionTitle(m))}</b>
-                <span>${esc(dateText(m.date))} · ${esc(deploymentShipSummary(m))}</span>
-              </div>
-              <div class="mission-meta">
-                <span class="pill ${m.closed?"closed":"open"}">${m.closed?"Closed":"Open"}</span>
-                <span class="pill">${m.responseCount??"?"} response${m.responseCount===1?"":"s"}</span>
-              </div>
-            </div>
-            <div class="actions">
-              <button class="btn primary tiny" data-manage="${m.id}">Manage</button>
-              <button class="btn ghost tiny" data-copy="${m.id}">Copy player link</button>
-            </div>
-          </div>`).join("")
-        :`<p class="sub">No deployments created yet.</p>`;
-
-      return `
-        <details class="panel admin-organiser-card">
-          <summary>
-            <div>
-              <div class="eyebrow">Organiser</div>
-              <h2>${esc(label)}</h2>
-              <div class="admin-organiser-email">${esc(p.email||"No email stored")}</div>
-            </div>
-            <div class="admin-organiser-summary-meta">
-              <span class="stat"><b>${owned.length}</b> deployment${owned.length===1?"":"s"}</span>
-              <span class="admin-view-hint">View deployments</span>
-            </div>
-          </summary>
-          <div class="admin-organiser-details">
-            <div class="admin-organiser-uid"><span>UID</span><code>${esc(p.id)}</code></div>
-            <div class="admin-organiser-deployments">${deployments}</div>
-          </div>
-        </details>`;
-    }).join("")
-    :`<section class="empty-state"><h2>No organisers yet</h2><p>Organisers will appear here after they first sign in with a magic link.</p></section>`;
-
-  main.innerHTML=`
-    <div class="page-head">
-      <div>
-        <div class="eyebrow">Administrator</div>
-        <h1>Control centre</h1>
-        <p class="sub">See organiser accounts, their deployments, and every deployment across the planner.</p>
-      </div>
-      <button id="adminCreateMissionBtn" class="btn primary">Create deployment</button>
-    </div>
-
-    <div class="stat-row">
-      <span class="stat"><b>${profiles.length}</b> organisers</span>
-      <span class="stat"><b>${missions.length}</b> deployments</span>
-      <span class="stat"><b>${missions.reduce((n,m)=>n+(Number.isFinite(m.responseCount)?m.responseCount:0),0)}</b> total responses</span>
-    </div>
-
-    <section class="admin-section">
-      <div class="admin-section-head">
-        <div>
-          <div class="eyebrow">Accounts</div>
-          <h2>Organisers</h2>
-          <p class="sub">Open an organiser to see the deployments attached to their account.</p>
-        </div>
-      </div>
-      <div class="admin-organiser-list">${organiserCards}</div>
-    </section>
-
-    <section class="admin-section">
-      <div class="admin-section-head">
-        <div>
-          <div class="eyebrow">Global view</div>
-          <h2>All deployments</h2>
-          <p class="sub">Every deployment, including ones created by the administrator.</p>
-        </div>
-      </div>
-      <div class="grid cards">
-        ${missions.length?missions.map(m=>missionCard(m,true)).join(""):`<section class="empty-state"><h2>No deployments yet</h2><p>Create a deployment yourself or wait for an organiser to create one.</p></section>`}
-      </div>
-    </section>`;
-
+  const missionData=await Promise.all(missions.map(async m=>{try{const ps=await getDocs(collection(db,"missions",m.id,"players")),players=ps.docs.map(d=>({id:d.id,...d.data()})),plan=computePlan(players,m);return[m.id,{players,plan}];}catch{return[m.id,{players:[],plan:null}];}}));
+  const dataMap=new Map(missionData),profileMap=new Map(profiles.map(p=>[p.id,p]));
+  missions=missions.map(m=>{const data=dataMap.get(m.id)||{players:[],plan:null};return{...m,ownerName:m.ownerUid===ADMIN_UID?"Administrator":(profileMap.get(m.ownerUid)?.name||m.ownerName||"Organiser"),ownerEmail:profileMap.get(m.ownerUid)?.email||"",responseCount:data.players.length,adminPlayers:data.players,adminPlan:data.plan};}).sort((a,b)=>String(a.date||"").localeCompare(String(b.date||"")));
+  const organiserCards=profiles.length?profiles.map(p=>{const owned=missions.filter(m=>m.ownerUid===p.id),label=p.name||p.email||"Organiser";const deployments=owned.length?owned.map(m=>`<div class="admin-organiser-deployment"><div class="admin-organiser-deployment-main"><div><b>${esc(missionTitle(m))}</b><span>${esc(dateText(m.date))} · ${esc(deploymentShipSummary(m))}</span></div><div class="mission-meta"><span class="pill ${m.closed?"closed":"open"}">${m.closed?"Closed":"Open"}</span><span class="pill">${m.responseCount} response${m.responseCount===1?"":"s"}</span></div></div><div class="actions"><button class="btn primary tiny" data-manage="${m.id}">Manage</button><button class="btn ghost tiny" data-copy="${m.id}">Copy player link</button><button class="btn ghost tiny" data-transfer-mission="${m.id}">Change organiser</button></div><details class="admin-deployment-players"><summary>Players & assignments <span>${m.responseCount}</span></summary><div class="admin-assignment-list">${adminPlayerAssignmentRows(m)}</div></details></div>`).join(""):`<p class="sub">No deployments created yet.</p>`;return `<details class="panel admin-organiser-card"><summary><div><div class="eyebrow">Organiser</div><h2>${esc(label)}</h2><div class="admin-organiser-email">${esc(p.email||"No email stored")}</div></div><div class="admin-organiser-summary-meta"><span class="stat"><b>${owned.length}</b> deployment${owned.length===1?"":"s"}</span><span class="admin-view-hint">View deployments</span></div></summary><div class="admin-organiser-details"><div class="admin-organiser-uid"><span>UID</span><code>${esc(p.id)}</code></div><div class="admin-organiser-account-actions"><button class="btn danger tiny" data-delete-organiser="${p.id}" data-organiser-label="${esc(label)}">Delete organiser + deployments</button></div><div class="admin-organiser-deployments">${deployments}</div></div></details>`;}).join(""):`<section class="empty-state"><h2>No organisers yet</h2><p>Organisers will appear here after they first sign in with a magic link.</p></section>`;
+  main.innerHTML=`<div class="page-head"><div><div class="eyebrow">Administrator</div><h1>Control centre</h1><p class="sub">See organiser accounts, their deployments, players and current optimised assignments.</p></div><button id="adminCreateMissionBtn" class="btn primary">Create deployment</button></div><div class="stat-row"><span class="stat"><b>${profiles.length}</b> organisers</span><span class="stat"><b>${missions.length}</b> deployments</span><span class="stat"><b>${missions.reduce((n,m)=>n+m.responseCount,0)}</b> total responses</span></div><section class="admin-section"><div class="admin-section-head"><div><div class="eyebrow">Accounts</div><h2>Organisers</h2><p class="sub">Open an organiser to see their deployments, players and current assignment quality.</p></div></div><div class="admin-organiser-list">${organiserCards}</div></section><section class="admin-section"><div class="admin-section-head"><div><div class="eyebrow">Global view</div><h2>All deployments</h2><p class="sub">Every deployment, including administrator-owned deployments.</p></div></div><div class="grid cards">${missions.length?missions.map(m=>missionCard(m,true)+`<details class="admin-global-players"><summary>${m.responseCount} players & current assignments</summary><div class="admin-assignment-list">${adminPlayerAssignmentRows(m)}</div></details>`).join(""):`<section class="empty-state"><h2>No deployments yet</h2><p>Create a deployment yourself or wait for an organiser to create one.</p></section>`}</div></section>`;
   $("#adminCreateMissionBtn").onclick=()=>openMissionSetup();
-
-  document.querySelectorAll("[data-manage]").forEach(b=>{
-    b.onclick=()=>openMissionManager(b.dataset.manage);
-  });
-  document.querySelectorAll("[data-copy]").forEach(b=>{
-    b.onclick=()=>copyMissionLink(b.dataset.copy,b);
-  });
-  document.querySelectorAll("[data-delete-mission]").forEach(b=>{
-    b.onclick=async()=>{
-      if(confirm("Delete this deployment and all player responses?")){
-        await deleteMissionCascade(b.dataset.deleteMission);
-      }
-    };
-  });
+  document.querySelectorAll("[data-manage]").forEach(b=>b.onclick=()=>openMissionManager(b.dataset.manage));
+  document.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>copyMissionLink(b.dataset.copy,b));
+  document.querySelectorAll("[data-transfer-mission]").forEach(b=>{b.onclick=()=>{const mission=missions.find(m=>m.id===b.dataset.transferMission);if(mission)openOwnerTransfer(mission);};});
+  document.querySelectorAll("[data-delete-organiser]").forEach(b=>b.onclick=()=>deleteOrganiserFromControlCentre(b.dataset.deleteOrganiser,b.dataset.organiserLabel||"this organiser"));
+  document.querySelectorAll("[data-delete-mission]").forEach(b=>{b.onclick=async()=>{if(confirm("Delete this deployment and all player responses?"))await deleteMissionCascade(b.dataset.deleteMission);};});
 }
-async function deleteMissionCascade(id){const ps=await getDocs(collection(db,"missions",id,"players"));const batch=writeBatch(db);ps.docs.forEach(d=>batch.delete(d.ref));batch.delete(doc(db,"missions",id));await batch.commit();renderAdminDashboard();}
+
+async function deleteMissionCascade(id){const [ps,claims]=await Promise.all([getDocs(collection(db,"missions",id,"players")),getDocs(collection(db,"missions",id,"nameClaims"))]);const batch=writeBatch(db);ps.docs.forEach(d=>batch.delete(d.ref));claims.docs.forEach(d=>batch.delete(d.ref));batch.delete(doc(db,"missions",id));await batch.commit();renderAdminDashboard();}
 
 function localProfilesKey(missionId){return `bcCrewProfiles:${missionId}`;}
 function getLocalProfiles(missionId){try{return JSON.parse(localStorage.getItem(localProfilesKey(missionId))||"{}")||{};}catch{return{};}}
@@ -1094,10 +1026,10 @@ function debounce(fn,ms){let t;return(...args)=>{clearTimeout(t);t=setTimeout(()
 async function resolveSavedPlayer(loadForm){const profiles=getLocalProfiles(activeMission.id),last=localStorage.getItem(`bcCrewLast:${activeMission.id}`);if(activePlayerProfile)return;if(last&&profiles[last])await activatePlayerProfile(profiles[last],loadForm);}
 async function ensurePlayerProfile(name){const key=normalizeName(name),profiles=getLocalProfiles(activeMission.id);let profile=profiles[key];if(profile){const ctx=await namedAnonymousContext(profile.appName);profile.uid=ctx.user.uid;profiles[key]=profile;saveLocalProfiles(activeMission.id,profiles);return{profile,ctx};}const appName=`player_${activeMission.id.slice(0,8)}_${Math.random().toString(36).slice(2,10)}`;const ctx=await namedAnonymousContext(appName);profile={name,appName,uid:ctx.user.uid};profiles[key]=profile;saveLocalProfiles(activeMission.id,profiles);return{profile,ctx};}
 async function activatePlayerProfile(profile,loadForm=true){const ctx=await namedAnonymousContext(profile.appName);activePlayerProfile={...profile,uid:ctx.user.uid};activePlayerContext=ctx;localStorage.setItem(`bcCrewLast:${activeMission.id}`,normalizeName(profile.name));const entry=missionPlayers.find(p=>p.id===ctx.user.uid);if(entry&&loadForm)populatePlayerForm(entry);renderPlayerIdentity(entry?"owned":"new",profile.name);renderPlayerState();}
-async function resolveTypedPlayerName(){const raw=$("#playerName")?.value.trim();if(!raw)return;const key=normalizeName(raw),profiles=getLocalProfiles(activeMission.id);if(activePlayerProfile&&normalizeName(activePlayerProfile.name)===key)return;if(profiles[key]){await activatePlayerProfile(profiles[key],true);return;}const remote=missionPlayers.find(p=>normalizeName(p.name)===key);if(remote){activePlayerProfile=null;activePlayerContext=null;renderPlayerIdentity("blocked",raw);setMessage($("#playerMessage"),"That name is already registered on another device. Contact the organiser if it needs changing.","warn");}else renderPlayerIdentity("new",raw);}
-function renderPlayerIdentity(mode,name){const el=$("#playerIdentity");if(!el)return;el.className=`registration-banner${mode==="owned"?" owned":mode==="blocked"?" blocked":""}`;el.innerHTML=mode==="owned"?`<b>Editing ${esc(name)}</b><span>This device can update this person's choices.</span>`:mode==="blocked"?`<b>${esc(name)} is already registered</b><span>Use the original device or contact the organiser.</span>`:`<b>${name?esc(name):"New crew member"}</b><span>Enter preferences below.</span>`;}
+async function resolveTypedPlayerName(){const raw=$("#playerName")?.value.trim();if(!raw)return;const key=normalizeName(raw),profiles=getLocalProfiles(activeMission.id);if(activePlayerProfile&&normalizeName(activePlayerProfile.name)===key)return;if(profiles[key]){await activatePlayerProfile(profiles[key],true);return;}const remote=missionPlayers.find(p=>normalizeName(p.name)===key);if(remote){activePlayerProfile=null;activePlayerContext=null;renderPlayerIdentity("blocked",raw);setMessage($("#playerMessage"),duplicateNameMessage(raw),"warn");}else renderPlayerIdentity("new",raw);}
+function renderPlayerIdentity(mode,name){const el=$("#playerIdentity");if(!el)return;el.className=`registration-banner${mode==="owned"?" owned":mode==="blocked"?" blocked":""}`;el.innerHTML=mode==="owned"?`<b>Editing ${esc(name)}</b><span>This device can update this person's choices.</span>`:mode==="blocked"?`<b>${esc(name)} is already registered</b><span>That name is already registered for this deployment. Use the original device or contact the organiser.</span>`:`<b>${name?esc(name):"New crew member"}</b><span>Enter preferences below.</span>`;}
 function populatePlayerForm(p){$("#playerName").value=p.name;$("#playerName").readOnly=true;$("#shipPref").value=p.shipPref||"";$("#pref1").value=p.prefs?.[0]||"";$("#pref2").value=p.prefs?.[1]||"";$("#pref3").value=p.prefs?.[2]||"";const set=new Set(p.dislikes||[]);$("#dislikes").querySelectorAll("input[type=checkbox]").forEach(x=>x.checked=set.has(x.value));$("#anotherPlayer").classList.remove("hidden");setupCheckHandlers();}
-async function submitPlayerChoices(e){e.preventDefault();if(activeMission.closed){setMessage($("#playerMessage"),"Choices are closed for this deployment. Contact the organiser if you need a change.","warn");return;}const payload={name:$("#playerName").value.trim(),shipPref:$("#shipPref").value,prefs:[$("#pref1").value,$("#pref2").value,$("#pref3").value],dislikes:readChecks($("#dislikes"))};const existingName=missionPlayers.find(p=>normalizeName(p.name)===normalizeName(payload.name));const profiles=getLocalProfiles(activeMission.id),local=profiles[normalizeName(payload.name)];if(existingName&&!local&&existingName.id!==activePlayerProfile?.uid){setMessage($("#playerMessage"),"That name is already registered on another device. Contact the organiser if it needs changing.","warn");return;}const err=validatePrefs(payload,missionPlayers,activePlayerProfile?.uid||"");if(err){setMessage($("#playerMessage"),err,"error");return;}try{const {profile,ctx}=await ensurePlayerProfile(payload.name);activePlayerProfile=profile;activePlayerContext=ctx;const ref=doc(ctx.db,"missions",activeMission.id,"players",ctx.user.uid),old=missionPlayers.find(p=>p.id===ctx.user.uid);const base={...payload,updatedAt:serverTimestamp(),source:"player"};if(old){base.createdAt=old.createdAt||serverTimestamp();base.priorityAt=preferenceChanged(old,payload)?serverTimestamp():(old.priorityAt||old.createdAt||serverTimestamp());}else{base.createdAt=serverTimestamp();base.priorityAt=serverTimestamp();}await setDoc(ref,base,{merge:true});localStorage.setItem(`bcCrewLast:${activeMission.id}`,normalizeName(payload.name));$("#playerName").readOnly=true;$("#anotherPlayer").classList.remove("hidden");renderPlayerIdentity("owned",payload.name);setMessage($("#playerMessage"),"Your choices are saved.","ok");}catch(ex){setMessage($("#playerMessage"),ex.message||"Couldn't save your choices.","error");}}
+async function submitPlayerChoices(e){e.preventDefault();if(activeMission.closed){setMessage($("#playerMessage"),"Choices are closed for this deployment. Contact the organiser if you need a change.","warn");return;}const payload={name:$("#playerName").value.trim(),shipPref:$("#shipPref").value,prefs:[$("#pref1").value,$("#pref2").value,$("#pref3").value],dislikes:readChecks($("#dislikes"))};const existingName=missionPlayers.find(p=>normalizeName(p.name)===normalizeName(payload.name));const profiles=getLocalProfiles(activeMission.id),local=profiles[normalizeName(payload.name)];if(existingName&&!local&&existingName.id!==activePlayerProfile?.uid){setMessage($("#playerMessage"),duplicateNameMessage(payload.name),"warn");return;}const err=validatePrefs(payload,missionPlayers,activePlayerProfile?.uid||"");if(err){setMessage($("#playerMessage"),err,"error");return;}try{const {profile,ctx}=await ensurePlayerProfile(payload.name);activePlayerProfile=profile;activePlayerContext=ctx;const ref=doc(ctx.db,"missions",activeMission.id,"players",ctx.user.uid),old=missionPlayers.find(p=>p.id===ctx.user.uid);const base={...payload,updatedAt:serverTimestamp(),source:"player"};if(old){base.createdAt=old.createdAt||serverTimestamp();base.priorityAt=preferenceChanged(old,payload)?serverTimestamp():(old.priorityAt||old.createdAt||serverTimestamp());}else{base.createdAt=serverTimestamp();base.priorityAt=serverTimestamp();}await runTransaction(ctx.db,async tx=>{const claimRef=nameClaimRef(ctx.db,activeMission.id,payload.name),claim=await tx.get(claimRef);if(claim.exists()&&claim.data()?.playerId!==ctx.user.uid)throw new Error(duplicateNameMessage(payload.name));tx.set(claimRef,{playerId:ctx.user.uid,name:payload.name,updatedAt:serverTimestamp()},{merge:true});if(old&&nameClaimId(old.name)!==nameClaimId(payload.name))tx.delete(nameClaimRef(ctx.db,activeMission.id,old.name));tx.set(ref,base,{merge:true});});localStorage.setItem(`bcCrewLast:${activeMission.id}`,normalizeName(payload.name));$("#playerName").readOnly=true;$("#anotherPlayer").classList.remove("hidden");renderPlayerIdentity("owned",payload.name);setMessage($("#playerMessage"),"Your choices are saved.","ok");}catch(ex){setMessage($("#playerMessage"),ex.message||"Couldn't save your choices.","error");}}
 function startAnotherPlayer(){activePlayerProfile=null;activePlayerContext=null;localStorage.removeItem(`bcCrewLast:${activeMission.id}`);$("#playerForm").reset();$("#playerName").readOnly=false;$("#shipPref").value="";$("#dislikes").querySelectorAll("input").forEach(x=>x.checked=false);$("#anotherPlayer").classList.add("hidden");$("#myChoiceSummary").innerHTML="";setMessage($("#playerMessage"),"");renderPlayerIdentity("new","");}
 function renderPlayerState(){if(!activeMission||!$("#playerPlan"))return;const plan=computePlan(missionPlayers,activeMission);$("#playerOpenPill").textContent=activeMission.closed?"Choices closed":"Choices open";$("#playerOpenPill").className=`pill ${activeMission.closed?"closed":"open"}`;$("#playerPlan").innerHTML=renderPlan(plan,activeMission,{ownId:activePlayerProfile?.uid||""});const own=missionPlayers.find(p=>p.id===activePlayerProfile?.uid);if(own){const a=plan.assignments.find(x=>x.playerId===own.id);$("#myChoiceSummary").innerHTML=`<div class="message ok"><b>${esc(own.name)}</b><br>${own.prefs.map(x=>x===FLEX?"No preference":esc(x)).join(" → ")}${a?`<br><b>Current suggestion:</b> ${esc(displayShip(activeMission.ships.find(s=>s.id===a.shipId),activeMission.ships.findIndex(s=>s.id===a.shipId)))} · ${esc(a.role)}`:""}</div>`;}if(activeMission.closed){$("#playerSubmit").disabled=true;setMessage($("#playerMessage"),"Choices are closed. Contact the organiser if you need a change.","warn");}else $("#playerSubmit").disabled=false;}
 
