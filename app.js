@@ -69,6 +69,7 @@ function nameClaimRef(dbInstance,deploymentId,name){return doc(dbInstance,"missi
 function duplicateNameMessage(name="That name"){return `${name} is already registered for this deployment. Please use a different name.`;}
 function randId(prefix="x"){return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,9)}`;}
 function setMessage(el,text,type=""){if(!el)return;el.textContent=text||"";el.className=`message${type?` ${type}`:""}`;}
+function debounce(fn,wait=300){let timer;return function(...args){const ctx=this;clearTimeout(timer);timer=setTimeout(()=>fn.apply(ctx,args),wait);};}
 function clearUnsubs(){missionUnsubs.forEach(fn=>{try{fn();}catch{}});missionUnsubs=[];}
 const SHUTTLE_FALLBACKS = {
   "XO": ["Captain"],
