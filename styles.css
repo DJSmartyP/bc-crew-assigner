@@ -1044,26 +1044,20 @@ details.response-row .preference-chips{margin-top:5px}
 }
 
 
-/* Player card names: scale to fit instead of overflowing */
-.player-list-name{
-  display:block;
+/* Player name fit fix */
+.response-top{
+  min-width:0;
+}
+.response-name{
   min-width:0;
   max-width:100%;
-  font-size:clamp(0.75rem, 2vw, 1.15rem);
-  line-height:1.1;
-  white-space:normal;
+  font-size:clamp(0.95rem, 3vw, 1.35rem);
+  line-height:1.15;
   overflow-wrap:anywhere;
+  word-break:break-word;
+  white-space:normal;
 }
-
-/* Keep long names visible while preserving card layout */
-.player-list-summary{
-  min-width:0;
-}
-
-.player-list-summary .player-list-name{
-  flex:1 1 auto;
-}
-
-.admin-assignment-row{
+.response-row,
+.response-row *{
   min-width:0;
 }
