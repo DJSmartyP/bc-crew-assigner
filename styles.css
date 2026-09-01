@@ -285,3 +285,17 @@ a{color:inherit}.app-shell{width:min(1580px,100%);margin:auto;padding:14px}.topb
 .google-auth-note{display:grid;gap:4px;margin-top:14px;padding:11px 12px;border:1px solid rgba(112,221,245,.13);border-radius:10px;background:rgba(6,23,39,.62)}
 .google-auth-note b{font:700 9px "Orbitron";letter-spacing:.08em;text-transform:uppercase;color:var(--cyan)}
 .google-auth-note span{color:var(--muted);font-size:14px;line-height:1.35}
+
+/* Removed organiser archive */
+.admin-removed-organisers{margin-top:12px;padding:0;border-color:rgba(255,143,155,.15);background:rgba(37,15,24,.28);overflow:hidden}
+.admin-removed-organisers>summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 16px;cursor:pointer}
+.admin-removed-organisers>summary::-webkit-details-marker{display:none}
+.admin-removed-organisers>summary:hover{background:rgba(255,143,155,.035)}
+.admin-removed-organisers>summary b{display:block;margin-top:3px;font:700 14px "Orbitron";letter-spacing:.035em;color:var(--text)}
+.admin-removed-summary{display:flex;align-items:center;gap:10px}
+.admin-removed-body{padding:0 12px 12px;border-top:1px solid rgba(255,143,155,.1)}
+.admin-removed-body>.sub{margin:11px 3px}
+.admin-removed-organisers[open]>.admin-removed-summary .admin-view-hint,.admin-removed-organisers[open]>summary .admin-view-hint{color:var(--gold)}
+.empty-state.compact{padding:18px;min-height:0}
+.empty-state.compact h2{font-size:18px}
+@media(max-width:650px){.admin-removed-organisers>summary{align-items:flex-start}.admin-removed-summary{flex-wrap:wrap;justify-content:flex-end}}
