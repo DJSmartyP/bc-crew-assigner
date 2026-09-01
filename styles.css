@@ -878,5 +878,12 @@ details.response-row .preference-chips{margin-top:5px}
   width:100%;
 }
 
-/* Response accordion patch */
-.response-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.response-row{padding:0;overflow:hidden}.response-row.response-open{grid-column:1/-1}.player-list-summary{width:100%;display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;background:transparent;border:0;color:inherit;padding:10px;cursor:pointer}.player-list-name{font-size:19px;font-weight:700}.player-list-current{font-size:14px;color:var(--muted)}@media(max-width:900px){.response-list{grid-template-columns:1fr}}
+
+/* Stable response selector redesign */
+.response-selector{
+  width:100%;
+  margin-bottom:12px;
+}
+.selected-response-editor .response-row{
+  width:100%;
+}
