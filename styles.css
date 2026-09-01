@@ -972,7 +972,7 @@ details.response-row .preference-chips{margin-top:5px}
 }
 
 .response-editor-header h3 {
-  font-size: clamp(1.1rem, 4vw, 2.6rem);
+  font-size: clamp(1.1rem, 4vw, 2.2rem);
   max-width:100%;
   overflow-wrap:anywhere;
   word-break:break-word;

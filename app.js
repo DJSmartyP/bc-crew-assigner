@@ -964,7 +964,8 @@ document.querySelectorAll("[data-delete-player]").forEach(b=>b.onclick=()=>delet
 
 function renderResponseSelector(plan){
   if(!missionPlayers.length)return `<div class="selected-response-editor empty-editor"><p class="sub">No responses yet.</p></div>`;
-  const players=[...missionPlayers].sort(prioritySort);
+  const cap=(activeMission.ships?.length||1)*MAX_PER_SHIP;
+  const players=[...missionPlayers].sort(prioritySort).slice(0,cap);
   if(selectedResponsePlayerId && !players.some(p=>p.id===selectedResponsePlayerId)) selectedResponsePlayerId=null;
   const selected=players.find(p=>p.id===selectedResponsePlayerId);
   return `<select id="responseSelector" class="response-selector">
