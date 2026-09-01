@@ -959,6 +959,15 @@ $("#responseSelector").onchange=(e)=>{
   selectedResponsePlayerId=e.target.value||null;
   renderManagerState();
 };
+$("#responseSearch").oninput=(e)=>{
+  const query=(e.target.value||"").toLowerCase();
+  const selector=$("#responseSelector");
+  if(!selector)return;
+  Array.from(selector.options).forEach((option,index)=>{
+    if(index===0){option.hidden=false;return;}
+    option.hidden=Boolean(query && !option.textContent.toLowerCase().includes(query));
+  });
+};
 document.querySelectorAll("[data-edit-player]").forEach(b=>b.onclick=()=>openOrganiserPlayerEditor(missionPlayers.find(p=>p.id===b.dataset.editPlayer)));
 document.querySelectorAll("[data-delete-player]").forEach(b=>b.onclick=()=>deleteOrganiserPlayer(b.dataset.deletePlayer));}
 

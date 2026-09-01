@@ -932,3 +932,58 @@ details.response-row .preference-chips{margin-top:5px}
   color:var(--muted);
   margin-top:6px;
 }
+
+
+/* Response workspace polish */
+.response-search {
+  margin-bottom: 10px;
+}
+
+.response-search-input,
+.response-selector {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  min-height: 42px;
+  font-size: 16px;
+  border-radius: 10px;
+}
+
+.selected-response-editor {
+  margin-top: 14px;
+  min-height: 360px;
+}
+
+.empty-editor {
+  min-height: 260px;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+  text-align:center;
+  border:1px dashed var(--border);
+  border-radius:14px;
+  padding:24px;
+}
+
+.response-editor-card {
+  padding: 24px;
+  min-height: 340px;
+}
+
+.response-editor-header h3 {
+  font-size: clamp(1.6rem, 5vw, 2.6rem);
+  max-width:100%;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.response-current {
+  font-size: 1.1rem;
+}
+
+.preference-chip {
+  font-size: .95rem;
+  padding: 7px 10px;
+}
