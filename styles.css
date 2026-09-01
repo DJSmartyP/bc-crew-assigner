@@ -1043,6 +1043,13 @@ details.response-row .preference-chips{margin-top:5px}
   border-radius:999px;
 }
 
-
-/* player-list-name-font-adjust: reduce card name size for longer usernames */
-.player-list-name{font-size:14px;line-height:1.15;}
+/* Player editor/list name fit fix - targets actual player-list-name */
+.player-list-name{
+  min-width:0;
+  font:700 clamp(12px, 2vw, 15px) "Orbitron";
+  overflow:visible;
+  text-overflow:clip;
+  white-space:normal;
+  overflow-wrap:anywhere;
+  line-height:1.15;
+}
