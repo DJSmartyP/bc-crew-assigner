@@ -1042,3 +1042,28 @@ details.response-row .preference-chips{margin-top:5px}
   font-size:13px;
   border-radius:999px;
 }
+
+
+/* Player card names: scale to fit instead of overflowing */
+.player-list-name{
+  display:block;
+  min-width:0;
+  max-width:100%;
+  font-size:clamp(0.75rem, 2vw, 1.15rem);
+  line-height:1.1;
+  white-space:normal;
+  overflow-wrap:anywhere;
+}
+
+/* Keep long names visible while preserving card layout */
+.player-list-summary{
+  min-width:0;
+}
+
+.player-list-summary .player-list-name{
+  flex:1 1 auto;
+}
+
+.admin-assignment-row{
+  min-width:0;
+}
