@@ -970,6 +970,8 @@ function responseRow(p,plan){
   const assignment=plan?.assignments?.find(a=>a.playerId===p.id);
   const assignmentInfo=assignment?roleFor(assignment.role):null;
   const rowTeam=assignmentInfo?.team?` ${teamClass(assignmentInfo.team)}`:"";
+  const assignmentShip=assignment?(activeMission.ships||[]).find(s=>s.id===assignment.shipId):null;
+  const assignmentShipIndex=assignmentShip?(activeMission.ships||[]).findIndex(s=>s.id===assignment.shipId):-1;
   let lockText="";
   if(ov?.role||ov?.shipId){
     const lockedShipIndex=ov?.shipId?(activeMission.ships||[]).findIndex(s=>s.id===ov.shipId):-1;
@@ -978,8 +980,9 @@ function responseRow(p,plan){
     else if(ov.role)lockText=`Locked station: ${esc(ov.role)} · either ship`;
     else lockText=`Locked ship: ${esc(lockedShip)}`;
   }
-  const assignedLine=assignment?`<div class="response-assignment"><span>Current</span><b>${esc(assignment.role)}</b></div>`:"";
-  return `<div class="response-row${rowTeam}"><div class="response-top"><div class="response-copy"><div class="response-name">${esc(p.name)}</div>${multiShip?`<div class="response-meta">${ship>=0?`Preferred ship: ${esc(displayShip(activeMission.ships[ship],ship))}`:"Ship: no preference"}</div>`:""}<div class="preference-chips">${stationPreferenceChips(p.prefs||[])}</div>${lockText?`<div class="fixed-note">${lockText}</div>`:""}</div><div class="response-side">${assignedLine}<div class="actions"><button class="btn ghost tiny" data-edit-player="${p.id}">Edit</button><button class="btn danger tiny" data-delete-player="${p.id}">Delete</button></div></div></div></div>`;
+  const currentText=assignment?`${multiShip&&assignmentShip?`${esc(displayShip(assignmentShip,assignmentShipIndex))} · `:""}${esc(assignment.role)}`:"Not assigned yet";
+  const shipPrefLine=multiShip?`<div class="response-detail-line"><span>Ship preference</span><b>${ship>=0?esc(displayShip(activeMission.ships[ship],ship)):"No preference"}</b></div>`:"";
+  return `<details class="player-list-item response-row${rowTeam}"><summary class="player-list-summary"><span class="player-list-name">${esc(p.name)}</span><span class="player-list-current">${currentText}</span><span class="player-list-chevron" aria-hidden="true"></span></summary><div class="player-list-details">${shipPrefLine}<div class="response-detail-block"><span class="response-detail-label">Station preferences</span><div class="preference-chips">${stationPreferenceChips(p.prefs||[])}</div></div>${(p.dislikes||[]).length?`<div class="response-detail-line"><span>Really don't want</span><b>${esc((p.dislikes||[]).join(", "))}</b></div>`:""}${lockText?`<div class="fixed-note">${lockText}</div>`:""}${assignment?`<div class="response-detail-line"><span>Current result</span><b>${esc(assignment.quality?.label||"Assigned")}${assignment.shipMet===false?" · different ship preference":""}</b></div>`:""}<div class="player-list-actions"><button class="btn ghost tiny" data-edit-player="${p.id}">Edit</button><button class="btn danger tiny" data-delete-player="${p.id}">Delete</button></div></div></details>`;
 }
 async function deleteOrganiserPlayer(id){const p=missionPlayers.find(x=>x.id===id);if(!p||!confirm(`Delete ${p.name}'s response?`))return;await runTransaction(db,async tx=>{tx.delete(doc(db,"missions",activeMission.id,"players",id));tx.delete(nameClaimRef(db,activeMission.id,p.name));});if(activeMission.overrides?.[id]){const overrides={...(activeMission.overrides||{})};delete overrides[id];await updateDoc(doc(db,"missions",activeMission.id),{overrides,updatedAt:serverTimestamp()});}}
 function openOrganiserPlayerEditor(player=null){
@@ -1026,7 +1029,10 @@ function adminPlayerAssignmentRows(m){
     const a=plan?.assignments?.find(x=>x.playerId===p.id),ship=a?(m.ships||[]).find(s=>s.id===a.shipId):null,shipIndex=ship?(m.ships||[]).findIndex(s=>s.id===a.shipId):-1;
     const shipName=a?displayShip(ship,shipIndex):"—",quality=adminQualityText(a),shipPref=p.shipPref?(m.ships||[]).find(s=>s.id===p.shipPref):null,shipPrefIndex=shipPref?(m.ships||[]).findIndex(s=>s.id===p.shipPref):-1;
     const assignmentTeam=a?.role?roleFor(a.role)?.team:"";
-    return `<div class="admin-assignment-row${assignmentTeam?` ${teamClass(assignmentTeam)}`:""}"><div><b>${esc(p.name)}</b><span>${a?`${esc(shipName)} · ${esc(a.role)}`:"Not currently assigned"}</span></div><div class="admin-assignment-result ${a?.quality?.kind==="avoid"?"avoid":""}">${esc(quality)}${(m.ships||[]).length>1&&p.shipPref?`<small>${a?.shipMet?"Ship preference met":`Preferred ${esc(displayShip(shipPref,shipPrefIndex))}`}</small>`:""}${a?.forced?`<small>Fixed by organiser</small>`:""}</div></div>`;
+    const currentText=a?`${(m.ships||[]).length>1?`${esc(shipName)} · `:""}${esc(a.role)}`:"Not assigned yet";
+    const shipPrefText=(m.ships||[]).length>1?(shipPref?esc(displayShip(shipPref,shipPrefIndex)):"No preference"):"";
+    const prefs=stationPreferenceChips(p.prefs||[]);
+    return `<details class="player-list-item admin-assignment-row${assignmentTeam?` ${teamClass(assignmentTeam)}`:""}"><summary class="player-list-summary"><span class="player-list-name">${esc(p.name)}</span><span class="player-list-current">${currentText}</span><span class="player-list-chevron" aria-hidden="true"></span></summary><div class="player-list-details">${(m.ships||[]).length>1?`<div class="response-detail-line"><span>Ship preference</span><b>${shipPrefText}</b></div>`:""}<div class="response-detail-block"><span class="response-detail-label">Station preferences</span><div class="preference-chips">${prefs}</div></div>${(p.dislikes||[]).length?`<div class="response-detail-line"><span>Really don't want</span><b>${esc((p.dislikes||[]).join(", "))}</b></div>`:""}<div class="response-detail-line"><span>Assignment quality</span><b class="${a?.quality?.kind==="avoid"?"avoid":""}">${esc(quality)}</b></div>${(m.ships||[]).length>1&&p.shipPref?`<div class="response-detail-line"><span>Ship preference result</span><b>${a?.shipMet?"Met":`Preferred ${shipPrefText}`}</b></div>`:""}${a?.forced?`<div class="fixed-note">Fixed by organiser</div>`:""}</div></details>`;
   }).join("");
 }
 

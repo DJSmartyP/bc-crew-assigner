@@ -720,3 +720,52 @@ a{color:inherit}.app-shell{width:min(1580px,100%);margin:auto;padding:14px}.topb
     flex-direction:column;
   }
 }
+
+
+/* Compact collapsible player lists — organiser and admin */
+.player-list-item{
+  --team:var(--cyan);
+  display:block;
+  border:1px solid color-mix(in srgb,var(--team) 24%,#294a61);
+  border-left:4px solid color-mix(in srgb,var(--team) 72%,transparent);
+  border-radius:10px;
+  background:linear-gradient(90deg,color-mix(in srgb,var(--team) 6%,#071727),#071727 55%);
+  overflow:hidden;
+}
+.player-list-item+.player-list-item{margin-top:6px}
+.player-list-summary{
+  list-style:none;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(110px,auto) 18px;
+  align-items:center;
+  gap:10px;
+  min-height:44px;
+  padding:8px 10px;
+  cursor:pointer;
+  user-select:none;
+}
+.player-list-summary::-webkit-details-marker{display:none}
+.player-list-summary:hover{background:color-mix(in srgb,var(--team) 5%,transparent)}
+.player-list-name{min-width:0;font-size:17px;font-weight:700;overflow-wrap:anywhere}
+.player-list-current{min-width:0;color:var(--team);font:700 9px "Orbitron";letter-spacing:.035em;text-align:right;overflow-wrap:anywhere}
+.player-list-chevron{width:8px;height:8px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(45deg) translateY(-2px);transition:transform .18s ease}
+.player-list-item[open] .player-list-chevron{transform:rotate(225deg) translate(-2px,-2px)}
+.player-list-details{padding:9px 11px 11px;border-top:1px solid rgba(255,255,255,.06);background:rgba(3,13,23,.36)}
+.response-detail-line{display:grid;grid-template-columns:minmax(105px,.55fr) minmax(0,1fr);gap:10px;align-items:start;padding:5px 0;color:var(--muted);font-size:13px}
+.response-detail-line>span,.response-detail-label{font:700 8px "Orbitron";letter-spacing:.075em;text-transform:uppercase;color:#9fb4c6}
+.response-detail-line>b{color:#eaf4fc;font-size:14px;text-align:right;overflow-wrap:anywhere}
+.response-detail-line>b.avoid{color:var(--red)}
+.response-detail-block{padding:5px 0}
+.response-detail-block .preference-chips{margin-top:5px}
+.player-list-actions{display:flex;justify-content:flex-end;gap:7px;margin-top:8px}
+/* Override older expanded-card rules when used as details elements. */
+details.response-row,details.admin-assignment-row{padding:0}
+details.response-row .preference-chips{margin-top:5px}
+@media(max-width:560px){
+  .player-list-summary{grid-template-columns:minmax(0,1fr) 18px;gap:6px}
+  .player-list-current{grid-column:1/-1;grid-row:2;text-align:left;font-size:8px;padding-top:1px}
+  .player-list-chevron{grid-column:2;grid-row:1}
+  .response-detail-line{grid-template-columns:1fr}
+  .response-detail-line>b{text-align:left}
+  .player-list-actions{justify-content:flex-start}
+}
