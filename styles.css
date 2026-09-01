@@ -887,3 +887,48 @@ details.response-row .preference-chips{margin-top:5px}
 .selected-response-editor .response-row{
   width:100%;
 }
+
+
+/* Player selector editor workspace */
+.response-list{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+.response-search-input{
+  width:100%;
+  box-sizing:border-box;
+  margin-bottom:8px;
+}
+.response-selector{
+  width:100%;
+  margin-bottom:12px;
+}
+.selected-response-editor{
+  width:100%;
+}
+.empty-editor{
+  min-height:220px;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+  border:1px solid rgba(112,221,245,.15);
+  border-radius:12px;
+  padding:30px;
+}
+.response-editor-card{
+  min-height:320px;
+  border:1px solid rgba(112,221,245,.2);
+  border-radius:14px;
+  padding:18px;
+  background:#071727;
+}
+.response-editor-header h3{
+  margin:0;
+  font-size:28px;
+}
+.response-current{
+  color:var(--muted);
+  margin-top:6px;
+}

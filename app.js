@@ -963,14 +963,20 @@ document.querySelectorAll("[data-edit-player]").forEach(b=>b.onclick=()=>openOrg
 document.querySelectorAll("[data-delete-player]").forEach(b=>b.onclick=()=>deleteOrganiserPlayer(b.dataset.deletePlayer));}
 
 function renderResponseSelector(plan){
-  if(!missionPlayers.length)return `<p class="sub">No responses yet.</p>`;
+  if(!missionPlayers.length)return `<div class="selected-response-editor empty-editor"><p class="sub">No responses yet.</p></div>`;
   const players=[...missionPlayers].sort(prioritySort);
-  if(!selectedResponsePlayerId || !players.some(p=>p.id===selectedResponsePlayerId)) selectedResponsePlayerId=players[0].id;
+  if(selectedResponsePlayerId && !players.some(p=>p.id===selectedResponsePlayerId)) selectedResponsePlayerId=null;
   const selected=players.find(p=>p.id===selectedResponsePlayerId);
-  return `<select id="responseSelector" class="response-selector">
+  return `<div class="response-search">
+    <input id="responseSearch" class="response-search-input" placeholder="Search players..." value="">
+  </div>
+  <select id="responseSelector" class="response-selector">
+    <option value="">Select a player...</option>
     ${players.map(p=>`<option value="${p.id}" ${p.id===selectedResponsePlayerId?"selected":""}>${esc(p.name)}</option>`).join("")}
   </select>
-  <div class="selected-response-editor">${selected?responseRow(selected,plan):""}</div>`;
+  <div class="selected-response-editor">
+    ${selected ? responseRow(selected,plan) : `<div class="empty-editor"><h3>Select a player</h3><p class="sub">Choose a player above to view preferences, edit details, or delete their response.</p></div>`}
+  </div>`;
 }
 function stationPreferenceChips(prefs=[]){
   const chosen=(prefs||[]).filter(Boolean);
@@ -986,22 +992,23 @@ function responseRow(p,plan){
   const multiShip=(activeMission.ships||[]).length>1;
   const ship=p.shipPref?(activeMission.ships||[]).findIndex(s=>s.id===p.shipPref):-1;
   const assignment=plan?.assignments?.find(a=>a.playerId===p.id);
-  const assignmentInfo=assignment?roleFor(assignment.role):null;
-  const rowTeam=assignmentInfo?.team?` ${teamClass(assignmentInfo.team)}`:"";
   const assignmentShip=assignment?(activeMission.ships||[]).find(s=>s.id===assignment.shipId):null;
-  const assignmentShipIndex=assignmentShip?(activeMission.ships||[]).findIndex(s=>s.id===assignment.shipId):-1;
-  let lockText="";
-  if(ov?.role||ov?.shipId){
-    const lockedShipIndex=ov?.shipId?(activeMission.ships||[]).findIndex(s=>s.id===ov.shipId):-1;
-    const lockedShip=lockedShipIndex>=0?displayShip(activeMission.ships[lockedShipIndex],lockedShipIndex):"";
-    if(ov.role&&ov.shipId)lockText=`Locked: ${esc(ov.role)} · ${esc(lockedShip)}`;
-    else if(ov.role)lockText=`Locked station: ${esc(ov.role)} · either ship`;
-    else lockText=`Locked ship: ${esc(lockedShip)}`;
-  }
+  const assignmentShipIndex=assignmentShip?(activeMission.ships||[]).findIndex(s=>s.id===assignmentShip.id):-1;
   const currentText=assignment?`${multiShip&&assignmentShip?`${esc(displayShip(assignmentShip,assignmentShipIndex))} · `:""}${esc(assignment.role)}`:"Not assigned yet";
-  const shipPrefLine=multiShip?`<div class="response-detail-line"><span>Ship preference</span><b>${ship>=0?esc(displayShip(activeMission.ships[ship],ship)):"No preference"}</b></div>`:"";
-  return `<details class="player-list-item response-row${rowTeam}"><summary class="player-list-summary"><span class="player-list-name">${esc(p.name)}</span><span class="player-list-current">${currentText}</span><span class="player-list-chevron" aria-hidden="true"></span></summary><div class="player-list-details">${shipPrefLine}<div class="response-detail-block"><span class="response-detail-label">Station preferences</span><div class="preference-chips">${stationPreferenceChips(p.prefs||[])}</div></div>${(p.dislikes||[]).length?`<div class="response-detail-line"><span>Really don't want</span><b>${esc((p.dislikes||[]).join(", "))}</b></div>`:""}${lockText?`<div class="fixed-note">${lockText}</div>`:""}${assignment?`<div class="response-detail-line"><span>Current result</span><b>${esc(assignment.quality?.label||"Assigned")}${assignment.shipMet===false?" · different ship preference":""}</b></div>`:""}<div class="player-list-actions"><button class="btn ghost tiny" data-edit-player="${p.id}">Edit</button><button class="btn danger tiny" data-delete-player="${p.id}">Delete</button></div></div></details>`;
+  const lockText=ov?.role||ov?.shipId ? "Locked by organiser" : "";
+  return `<div class="response-editor-card">
+    <div class="response-editor-header">
+      <div><h3>${esc(p.name)}</h3><div class="response-current">${currentText}</div></div>
+    </div>
+    ${multiShip?`<div class="response-detail-line"><span>Ship preference</span><b>${ship>=0?esc(displayShip(activeMission.ships[ship],ship)):"No preference"}</b></div>`:""}
+    <div class="response-detail-block"><span class="response-detail-label">Station preferences</span><div class="preference-chips">${stationPreferenceChips(p.prefs||[])}</div></div>
+    ${(p.dislikes||[]).length?`<div class="response-detail-line"><span>Really don't want</span><b>${esc((p.dislikes||[]).join(", "))}</b></div>`:""}
+    ${lockText?`<div class="fixed-note">${lockText}</div>`:""}
+    <div class="response-detail-line"><span>Current result</span><b>${assignment?esc(assignment.quality?.label||"Assigned"):"Not assigned yet"}</b></div>
+    <div class="player-list-actions"><button class="btn ghost tiny" data-edit-player="${p.id}">Edit</button><button class="btn danger tiny" data-delete-player="${p.id}">Delete</button></div>
+  </div>`;
 }
+
 async function deleteOrganiserPlayer(id){const p=missionPlayers.find(x=>x.id===id);if(!p||!confirm(`Delete ${p.name}'s response?`))return;await runTransaction(db,async tx=>{tx.delete(doc(db,"missions",activeMission.id,"players",id));tx.delete(nameClaimRef(db,activeMission.id,p.name));});if(activeMission.overrides?.[id]){const overrides={...(activeMission.overrides||{})};delete overrides[id];await updateDoc(doc(db,"missions",activeMission.id),{overrides,updatedAt:serverTimestamp()});}}
 function openOrganiserPlayerEditor(player=null){
   const ov=player?getOverride(activeMission,player.id):null;
