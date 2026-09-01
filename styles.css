@@ -681,3 +681,42 @@ a{color:inherit}.app-shell{width:min(1580px,100%);margin:auto;padding:14px}.topb
 .admin-role-slot.team-shuttle,
 .response-row.team-shuttle,
 .admin-assignment-row.team-shuttle{--team:var(--shuttle)}
+
+/* Responsive organiser response cards: prevent assignment text collapsing vertically */
+.response-assignment b{
+  overflow-wrap:normal;
+  word-break:normal;
+}
+@media(max-width:650px){
+  .response-top{
+    display:grid;
+    grid-template-columns:minmax(0,1fr);
+    gap:10px;
+  }
+  .response-side{
+    width:100%;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+  }
+  .response-assignment{
+    min-width:0;
+    text-align:left;
+    flex-wrap:wrap;
+  }
+  .response-assignment b{
+    white-space:nowrap;
+  }
+  .response-side .actions{
+    margin-top:0;
+    flex-wrap:nowrap;
+    flex:0 0 auto;
+  }
+}
+@media(max-width:390px){
+  .response-side{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+}
