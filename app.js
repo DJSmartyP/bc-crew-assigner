@@ -1,8 +1,7 @@
 import { firebaseConfig, ADMIN_UID } from "./firebase-config.js";
 import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
-import { getAuth, onAuthStateChanged, signInAnonymously, signInWithEmailAndPassword, sendSignInLinkToEmail, isSignInWithEmailLink, signInWithEmailLink, signOut } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
+import { getAuth, onAuthStateChanged, signInAnonymously, signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
 import { getFirestore, collection, doc, getDoc, getDocs, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, query, where, serverTimestamp, writeBatch, runTransaction } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
-import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-functions.js";
 
 const $ = s => document.querySelector(s);
 const main = $("#main");
@@ -43,7 +42,7 @@ const CORE9 = ROLE_NAMES.filter(r=>r!=="Dock and drone" && !r.startsWith("Shuttl
 const MAIN10 = ROLE_NAMES.filter(r=>!r.startsWith("Shuttle") && r!=="XO");
 const configured = !Object.values(firebaseConfig).some(v=>String(v).startsWith("PASTE_"));
 
-let app, auth, db, functions;
+let app, auth, db;
 let currentUser = null;
 let currentRole = "";
 let activeMission = null;
@@ -434,23 +433,17 @@ function playerRules(){return `<div class="rules"><div class="rule"><span class=
 
 async function boot(){
   if(!configured){renderNeedsSetup();return;}
-  app=initializeApp(firebaseConfig);auth=getAuth(app);db=getFirestore(app);functions=getFunctions(app);
+  app=initializeApp(firebaseConfig);auth=getAuth(app);db=getFirestore(app);
   if(missionParam){await bootPlayer(missionParam);return;}
-  if(isSignInWithEmailLink(auth,window.location.href)){
-    const savedEmail=localStorage.getItem("bcCrewOrganiserEmail");
-    if(savedEmail){
-      try{await finishOrganiserEmailLink(savedEmail);}
-      catch(ex){renderEmailLinkCompletion(friendlyAuthError(ex));return;}
-    }else{renderEmailLinkCompletion();return;}
-  }
   onAuthStateChanged(auth,async user=>{
     currentUser=user;
     if(!user){currentRole="";renderAccountLanding();return;}
     currentRole=user.uid===ADMIN_UID?"admin":"organiser";
     renderTopUser();
     try{
-      if(currentRole==="admin")await renderAdminDashboard();
-      else await ensureOrganiserProfileAndRender();
+      if(currentRole==="admin"){await renderAdminDashboard();return;}
+      try{await user.reload();}catch{}
+      await ensureOrganiserProfileAndRender();
     }catch(ex){
       console.error("Could not load account dashboard",ex);
       renderAccountLoadError(ex);
@@ -462,7 +455,7 @@ function renderAccountLoadError(ex){
   const code=ex?.code||"";
   let detail=ex?.message||"Firebase could not load your account.";
   if(code.includes("permission-denied")){
-    detail="Your sign-in worked, but Firestore is blocking the dashboard. Publish the firestore.rules file from this project in Firebase → Firestore Database → Rules, then refresh this page.";
+    detail="Your sign-in worked, but Firestore is blocking the dashboard. Publish the Spark-only firestore.rules file, then refresh this page.";
   }else if(code.includes("failed-precondition")){
     detail="Your sign-in worked, but Firestore is not ready yet. Make sure a Firestore database has been created for this Firebase project.";
   }
@@ -474,74 +467,67 @@ function renderAccountLoadError(ex){
   $("#signOutAfterError").onclick=()=>signOut(auth);
 }
 
-function renderNeedsSetup(){topActions.innerHTML="";main.innerHTML=`<section class="empty-state"><div class="eyebrow">One-time setup needed</div><h2>The planner code is ready</h2><p>Create the new Firebase project, then put its config into <b>firebase-config.js</b>. The setup guide in the repo walks through it.</p></section>`;}
+function renderNeedsSetup(){topActions.innerHTML="";main.innerHTML=`<section class="empty-state"><div class="eyebrow">One-time setup needed</div><h2>The planner code is ready</h2><p>Create the Firebase project, then put its config into <b>firebase-config.js</b>. The setup guide in the repo walks through it.</p></section>`;}
 function renderTopUser(){topActions.innerHTML=`<span class="pill ${currentRole}">${currentRole==="admin"?"Admin":"Organiser"}</span><button id="logoutBtn" class="btn ghost tiny">Sign out</button>`;$("#logoutBtn").onclick=()=>signOut(auth);}
-function organiserReturnUrl(){return `${location.origin}${location.pathname}`;}
-async function sendOrganiserMagicLink(email){
-  const address=String(email||"").trim();
-  if(!address)throw new Error("Enter your email address.");
-  let delivery="firebase";
-  try{
-    const sendBranded=httpsCallable(functions,"sendOrganiserSignInLink");
-    const result=await sendBranded({email:address,continueUrl:organiserReturnUrl()});
-    if(result?.data?.sent)delivery="branded";
-    else throw new Error("Branded email service did not confirm delivery.");
-  }catch(ex){
-    const code=String(ex?.code||"");
-    // Before the optional branded mail function is configured/deployed, keep
-    // the existing Firebase email-link flow working as a safe fallback.
-    if(code.includes("resource-exhausted"))throw ex;
-    console.warn("Branded sign-in email unavailable; using Firebase template.",ex);
-    await sendSignInLinkToEmail(auth,address,{url:organiserReturnUrl(),handleCodeInApp:true});
-  }
-  localStorage.setItem("bcCrewOrganiserEmail",address);
-  return delivery;
+function friendlyAuthError(ex){
+  const code=String(ex?.code||"");
+  if(code.includes("popup-closed-by-user")||code.includes("cancelled-popup-request"))return "Google sign-in was cancelled.";
+  if(code.includes("popup-blocked"))return "Your browser blocked the Google sign-in window. Allow pop-ups for this site and try again.";
+  if(code.includes("account-exists-with-different-credential"))return "An older organiser login already exists for this email. Sign in using the previous method once, or ask the administrator to migrate the organiser account.";
+  if(code.includes("unauthorized-domain"))return "This website domain is not authorised in Firebase Authentication yet.";
+  if(code.includes("operation-not-allowed"))return "Google Sign-In is not enabled in Firebase Authentication yet.";
+  if(code.includes("invalid-credential")||code.includes("wrong-password")||code.includes("user-not-found"))return "That administrator email or password wasn't recognised.";
+  if(code.includes("invalid-email"))return "Check the administrator email address.";
+  if(code.includes("too-many-requests"))return "Firebase has temporarily limited sign-in attempts from this device. Wait a little and try again.";
+  if(code.includes("network-request-failed"))return "The sign-in request could not reach Firebase. Check the connection and try again.";
+  return ex?.message||"Something went wrong. Please try again.";
 }
-async function finishOrganiserEmailLink(email){
-  const cred=await signInWithEmailLink(auth,String(email||"").trim(),window.location.href);
-  localStorage.removeItem("bcCrewOrganiserEmail");
-  history.replaceState({},document.title,location.pathname);
-  return cred;
+
+function renderBlockedOrganiser(profile){
+  topActions.innerHTML=`<span class="pill blocked-account">Organiser access removed</span><button id="blockedSignOut" class="btn ghost tiny">Sign out</button>`;
+  main.innerHTML=`<section class="empty-state blocked-account-state"><div class="eyebrow">Organiser account</div><h2>Access has been removed</h2><p>This Google/Firebase organiser identity can still exist in Firebase Authentication, but it cannot create, edit or manage deployments in the planner.</p><p class="sub">If this was unexpected, contact the planner administrator.</p></section>`;
+  $("#blockedSignOut").onclick=()=>signOut(auth);
 }
-function renderEmailLinkCompletion(errorText=""){
-  topActions.innerHTML=`<span class="pill organiser">Organiser sign in</span>`;
-  main.innerHTML=`<div class="page-head"><div><div class="eyebrow">Email sign-in</div><h1>Confirm your email</h1><p class="sub">This sign-in link was opened on a different browser or device. Enter the same email address the link was sent to.</p></div></div><section class="panel" style="max-width:620px"><form id="completeEmailLinkForm"><div class="field"><label>Email address</label><input id="completeEmail" type="email" autocomplete="email" required></div><button class="btn primary" type="submit">Finish sign in</button><div id="completeEmailMessage" class="message${errorText?" error":""}">${esc(errorText)}</div></form></section>`;
-  $("#completeEmailLinkForm").onsubmit=async e=>{
-    e.preventDefault();
-    const message=$("#completeEmailMessage");
-    setMessage(message,"Confirming your email…");
-    try{
-      await finishOrganiserEmailLink($("#completeEmail").value);
-      setMessage(message,"Signed in. Opening your missions…","ok");
-      // On a different device boot() deliberately stopped here so the organiser
-      // could confirm their email. Reload once after successful completion so the
-      // normal Firebase auth-state listener starts and opens the dashboard.
-      window.location.reload();
-    }catch(ex){
-      setMessage(message,friendlyAuthError(ex),"error");
-    }
-  };
-}
+
 function renderAccountLanding(){
   topActions.innerHTML="";
-  main.innerHTML=`<section class="login-hero"><div class="login-intro"><div class="eyebrow">Interstellar Deployment Planner</div><h1>Build the right crew for every deployment</h1><p class="login-lead">Collect ranked crew preferences, balance stations across ships, and keep one live suggested deployment plan as responses change.</p></div><div class="login-layout"><div class="login-column"><section class="panel green organiser-primary"><div class="eyebrow">New or returning organiser</div><h2>Sign in with your email</h2><p class="sub">No password needed. Enter your email and we'll send a secure sign-in link. Your first sign-in automatically creates your organiser account.</p><form id="magicLinkForm"><div class="field"><label>Email address</label><input id="magicEmail" type="email" autocomplete="email" required placeholder="you@example.com"></div><button class="btn success" type="submit">Email me a sign-in link</button><div id="magicMessage" class="message"></div></form></section><section class="player-link-note"><div><b>Joining a crew?</b><span>Use the unique deployment link your organiser sent you. Players do not need an account or password.</span></div></section><details class="admin-access"><summary>Administrator sign in</summary><div class="admin-access-body"><p class="sub">Administrator access only.</p><form id="loginForm"><div class="admin-login-fields"><div class="field"><label>Email</label><input id="loginEmail" type="email" autocomplete="username" required></div><div class="field"><label>Password</label><input id="loginPassword" type="password" autocomplete="current-password" required></div><button class="btn ghost" type="submit">Admin sign in</button></div><div id="loginMessage" class="message"></div></form></div></details></div><aside class="panel feature-panel"><div class="eyebrow">Deployment control</div><h2>What the planner can do</h2><p class="sub feature-intro">Everything an organiser needs to turn a group of preferences into a workable crew plan.</p><div class="feature-list"><div class="feature-item"><span class="feature-index">01</span><div><b>Create deployments</b><span>Set the deployment date and choose the ship in use. Two-ship deployments automatically use Takanami and Havock.</span></div></div><div class="feature-item"><span class="feature-index">02</span><div><b>Send one player link</b><span>Every deployment gets its own unique link. Players open it and submit choices without creating an account.</span></div></div><div class="feature-item"><span class="feature-index">03</span><div><b>Collect real preferences</b><span>Players rank three stations, choose a preferred ship, and flag roles they really do not want.</span></div></div><div class="feature-item"><span class="feature-index">04</span><div><b>Rebalance automatically</b><span>The suggested crew is recalculated whenever preferences change, aiming to satisfy the group as a whole.</span></div></div><div class="feature-item"><span class="feature-index">05</span><div><b>Adapt to crew size</b><span>All stations stay visible. Shuttle availability responds to crew size and the organiser’s ship-balance setting, while early Shuttle preferences still map to useful main-ship equivalents.</span></div></div><div class="feature-item"><span class="feature-index">06</span><div><b>Stay in control</b><span>Add or edit players, close choices, and lock a person to a specific station or ship when the deployment needs it.</span></div></div><div class="feature-item"><span class="feature-index">07</span><div><b>Export a crew PDF</b><span>Generate a sci-fi crew manifest with one page per ship, ready to brief or print.</span></div></div></div></aside></div></section>`;
-  $("#magicLinkForm").onsubmit=async e=>{e.preventDefault();const email=$("#magicEmail").value.trim();setMessage($("#magicMessage"),"Sending your sign-in link…");try{const delivery=await sendOrganiserMagicLink(email);setMessage($("#magicMessage"),delivery==="branded"?`Interstellar Deployment Planner sign-in email sent to ${email}. Check your inbox and junk folder.`:`Sign-in link sent to ${email}. Check your inbox and junk folder.`,"ok");}catch(ex){setMessage($("#magicMessage"),friendlyAuthError(ex),"error");}};
-  $("#loginForm").onsubmit=async e=>{
-    e.preventDefault();
-    setMessage($("#loginMessage"),"Signing in…");
+  main.innerHTML=`<section class="login-hero"><div class="login-intro"><div class="eyebrow">Interstellar Deployment Planner</div><h1>Build the right crew for every deployment</h1><p class="login-lead">Collect ranked crew preferences, balance stations across ships, and keep one live suggested deployment plan as responses change.</p></div><div class="login-layout"><div class="login-column"><section class="panel green organiser-primary"><div class="eyebrow">Organiser access</div><h2>Sign in with Google</h2><p class="sub">Use your Google account to create and manage deployments. There is no password to remember and the planner does not send a sign-in email.</p><button id="googleOrganiserBtn" class="google-signin-btn" type="button"><svg class="google-mark" viewBox="0 0 18 18" aria-hidden="true"><path fill="#4285F4" d="M17.64 9.205c0-.638-.057-1.252-.164-1.841H9v3.481h4.844a4.14 4.14 0 0 1-1.797 2.715v2.259h2.909c1.702-1.567 2.684-3.878 2.684-6.614Z"/><path fill="#34A853" d="M9 18c2.43 0 4.468-.806 5.956-2.181l-2.91-2.259c-.805.54-1.835.859-3.046.859-2.344 0-4.328-1.585-5.037-3.715H.956v2.332A8.997 8.997 0 0 0 9 18Z"/><path fill="#FBBC05" d="M3.963 10.704A5.41 5.41 0 0 1 3.682 9c0-.592.102-1.168.281-1.704V4.964H.956A8.997 8.997 0 0 0 0 9c0 1.452.347 2.826.956 4.036l3.007-2.332Z"/><path fill="#EA4335" d="M9 3.581c1.321 0 2.507.454 3.441 1.346l2.581-2.582C13.464.892 11.426 0 9 0A8.997 8.997 0 0 0 .956 4.964l3.007 2.332C4.672 5.166 6.656 3.581 9 3.581Z"/></svg><span>Continue with Google</span></button><div id="googleOrganiserMessage" class="message"></div><div class="google-auth-note"><b>What gets stored?</b><span>Your Google display name, email address and Firebase user ID are saved to your organiser profile so the administrator can identify who owns each deployment. The planner does not receive your Google password.</span></div></section><section class="player-link-note"><div><b>Joining a crew?</b><span>Use the unique deployment link your organiser sent you. Players do not need a Google account or password.</span></div></section><details class="admin-access"><summary>Administrator sign in</summary><div class="admin-access-body"><p class="sub">Administrator access only.</p><form id="loginForm"><div class="admin-login-fields"><div class="field"><label>Email</label><input id="loginEmail" type="email" autocomplete="username" required></div><div class="field"><label>Password</label><input id="loginPassword" type="password" autocomplete="current-password" required></div><button class="btn ghost" type="submit">Admin sign in</button></div><div id="loginMessage" class="message"></div></form></div></details></div><aside class="panel feature-panel"><div class="eyebrow">Deployment control</div><h2>What the planner can do</h2><p class="sub feature-intro">Everything an organiser needs to turn a group of preferences into a workable crew plan.</p><div class="feature-list"><div class="feature-item"><span class="feature-index">01</span><div><b>Create deployments</b><span>Set the deployment date and choose the ship in use. Two-ship deployments automatically use Takanami and Havock.</span></div></div><div class="feature-item"><span class="feature-index">02</span><div><b>Send one player link</b><span>Every deployment gets its own unique link. Players open it and submit choices without creating an account.</span></div></div><div class="feature-item"><span class="feature-index">03</span><div><b>Collect real preferences</b><span>Players rank three stations, choose a preferred ship, and flag roles they really do not want.</span></div></div><div class="feature-item"><span class="feature-index">04</span><div><b>Rebalance automatically</b><span>The suggested crew is recalculated whenever preferences change, aiming to satisfy the group as a whole.</span></div></div><div class="feature-item"><span class="feature-index">05</span><div><b>Adapt to crew size</b><span>All stations stay visible. Shuttle availability responds to crew size and the organiser’s ship-balance setting, while early Shuttle preferences still map to useful main-ship equivalents.</span></div></div><div class="feature-item"><span class="feature-index">06</span><div><b>Stay in control</b><span>Add or edit players, close choices, and lock a person to a specific station or ship when the deployment needs it.</span></div></div><div class="feature-item"><span class="feature-index">07</span><div><b>Export a crew PDF</b><span>Generate a sci-fi crew manifest with one page per ship, ready to brief or print.</span></div></div></div></aside></div></section>`;
+
+  $("#googleOrganiserBtn").onclick=async()=>{
+    const btn=$("#googleOrganiserBtn"),msg=$("#googleOrganiserMessage");
+    btn.disabled=true;setMessage(msg,"Opening Google sign-in…");
     try{
-      const cred=await signInWithEmailAndPassword(auth,$("#loginEmail").value.trim(),$("#loginPassword").value);
-      if(cred.user.uid!==ADMIN_UID){
-        await signOut(auth);
-        setMessage($("#loginMessage"),"That account is not the administrator account for this planner.","error");
-        return;
-      }
-      setMessage($("#loginMessage"),"Signed in. Loading dashboard…","ok");
-    }catch(ex){setMessage($("#loginMessage"),friendlyAuthError(ex),"error");}
+      const provider=new GoogleAuthProvider();
+      provider.setCustomParameters({prompt:"select_account"});
+      await signInWithPopup(auth,provider);
+    }catch(ex){
+      setMessage(msg,friendlyAuthError(ex),"error");
+      btn.disabled=false;
+    }
   };
+
+  $("#loginForm").onsubmit=async e=>{e.preventDefault();try{const cred=await signInWithEmailAndPassword(auth,$("#loginEmail").value.trim(),$("#loginPassword").value);if(cred.user.uid!==ADMIN_UID){await signOut(auth);throw new Error("That is not the administrator account.");}}catch(ex){setMessage($("#loginMessage"),friendlyAuthError(ex),"error");}};
 }
-function friendlyAuthError(ex){const code=ex?.code||"";if(code.includes("invalid-credential"))return "That email or password wasn't recognised.";if(code.includes("invalid-email"))return "Check the email address.";if(code.includes("expired-action-code"))return "That sign-in link has expired. Request a new one.";if(code.includes("invalid-action-code"))return "That sign-in link is no longer valid. Request a new one.";if(code.includes("unauthorized-domain"))return "This website domain is not yet authorised in Firebase Authentication.";if(code.includes("operation-not-allowed"))return "Email-link sign in is not enabled in Firebase yet.";return ex?.message||"Something went wrong. Please try again.";}
-async function ensureOrganiserProfileAndRender(){const ref=doc(db,"profiles",currentUser.uid),snap=await getDoc(ref);if(!snap.exists())await setDoc(ref,{name:currentUser.email?.split("@")[0]||"Organiser",email:currentUser.email||"",role:"organiser",createdAt:serverTimestamp()});await renderOrganiserDashboard();}
+
+async function ensureOrganiserProfileAndRender(){
+  if(!currentUser?.emailVerified){
+    main.innerHTML=`<section class="empty-state"><div class="eyebrow">Google sign-in</div><h2>Email verification unavailable</h2><p>Firebase did not mark this Google account email as verified, so organiser access cannot be created safely.</p><div class="actions" style="justify-content:center"><button id="unverifiedGoogleSignOut" class="btn ghost">Sign out</button></div></section>`;
+    $("#unverifiedGoogleSignOut").onclick=()=>signOut(auth);return;
+  }
+  const ref=doc(db,"profiles",currentUser.uid),snap=await getDoc(ref);
+  if(snap.exists()){
+    const profile={id:snap.id,...snap.data()};
+    if(profile.blocked===true){renderBlockedOrganiser(profile);return;}
+    const patch={};
+    if(!profile.email&&currentUser.email)patch.email=currentUser.email;
+    if(!profile.name&&currentUser.displayName)patch.name=currentUser.displayName;
+    if(Object.keys(patch).length)await updateDoc(ref,{...patch,updatedAt:serverTimestamp()});
+    await renderOrganiserDashboard();return;
+  }
+  const fallback=currentUser.email?.split("@")[0]||"Organiser";
+  await setDoc(ref,{name:currentUser.displayName||fallback,email:currentUser.email||"",role:"organiser",blocked:false,authProvider:"google.com",createdAt:serverTimestamp(),updatedAt:serverTimestamp()});
+  await renderOrganiserDashboard();
+}
 async function renderOrganiserDashboard(){clearUnsubs();const q=query(collection(db,"missions"),where("ownerUid","==",currentUser.uid));const snap=await getDocs(q);const missions=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(a.date||"").localeCompare(String(b.date||"")));main.innerHTML=`<div class="page-head"><div><div class="eyebrow">Organiser dashboard</div><h1>My deployments</h1><p class="sub">Create a deployment, share its player link, then manage the crew as preferences arrive.</p></div><button id="createMissionBtn" class="btn primary">Create deployment</button></div><div id="missionCards" class="grid cards">${missions.length?missions.map(m=>missionCard(m,false)).join(""):`<section class="empty-state"><h2>No deployments yet</h2><p>Create your first deployment to get a player preference link.</p></section>`}</div>`;$("#createMissionBtn").onclick=()=>openMissionSetup();document.querySelectorAll("[data-manage]").forEach(b=>b.onclick=()=>openMissionManager(b.dataset.manage));document.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>copyMissionLink(b.dataset.copy,b));}
 function missionCard(m,admin){return `<section class="panel mission-card"><div class="mission-date">${esc(dateText(m.date))}</div><h2>${esc(missionTitle(m))}</h2><p class="sub">${esc(deploymentShipSummary(m))}${Number.isFinite(m.responseCount)?` · ${m.responseCount} response${m.responseCount===1?"":"s"}`:""}</p><div class="mission-meta"><span class="pill ${m.closed?"closed":"open"}">${m.closed?"Choices closed":"Choices open"}</span>${admin?`<span class="pill organiser">${esc(m.ownerName||"Organiser")}</span>`:""}</div><div class="share-box"><input readonly value="${esc(buildMissionLink(m.id))}" aria-label="Player link"><button class="btn ghost tiny" data-copy="${m.id}">Copy link</button></div><div class="actions"><button class="btn primary" data-manage="${m.id}">Manage crew</button>${admin?`<button class="btn ghost" data-transfer-mission="${m.id}">Change organiser</button><button class="btn danger" data-delete-mission="${m.id}">Delete</button>`:""}</div></section>`;}
 function buildMissionLink(id){return `${location.origin}${location.pathname}?m=${encodeURIComponent(id)}`;}
@@ -549,7 +535,7 @@ async function copyMissionLink(id,button){const text=buildMissionLink(id);try{aw
 async function adminOwnerOptions(selectedUid=""){
   if(currentRole!=="admin")return"";
   const snap=await getDocs(collection(db,"profiles"));
-  const profiles=snap.docs.map(d=>({id:d.id,...d.data()})).filter(p=>p.role==="organiser").sort((a,b)=>String(a.email||a.name||"").localeCompare(String(b.email||b.name||"")));
+  const profiles=snap.docs.map(d=>({id:d.id,...d.data()})).filter(p=>p.role==="organiser"&&p.blocked!==true).sort((a,b)=>String(a.email||a.name||"").localeCompare(String(b.email||b.name||"")));
   const opts=[`<option value="${esc(ADMIN_UID)}"${selectedUid===ADMIN_UID?" selected":""}>Administrator</option>`];
   for(const p of profiles){const label=p.name&&p.email?`${p.name} — ${p.email}`:(p.email||p.name||p.id);opts.push(`<option value="${esc(p.id)}"${selectedUid===p.id?" selected":""}>${esc(label)}</option>`);}
   return opts.join("");
@@ -985,12 +971,23 @@ function adminPlayerAssignmentRows(m){
     return `<div class="admin-assignment-row"><div><b>${esc(p.name)}</b><span>${a?`${esc(shipName)} · ${esc(a.role)}`:"Not currently assigned"}</span></div><div class="admin-assignment-result ${a?.quality?.kind==="avoid"?"avoid":""}">${esc(quality)}${p.shipPref?`<small>${a?.shipMet?"Ship preference met":`Preferred ${esc(displayShip(shipPref,shipPrefIndex))}`}</small>`:""}${a?.forced?`<small>Fixed by organiser</small>`:""}</div></div>`;
   }).join("");
 }
-async function deleteOrganiserFromControlCentre(uid,label){
-  if(uid===ADMIN_UID){alert("The administrator account cannot be deleted here.");return;}
-  if(!confirm(`Delete ${label} and every deployment they own? This cannot be undone.`))return;
-  const typed=prompt(`Type DELETE to permanently remove ${label}, their deployments, player records and organiser sign-in account.`);
-  if(typed!=="DELETE")return;
-  try{const removeOrganiser=httpsCallable(functions,"deleteOrganiserAccount"),result=await removeOrganiser({uid});alert(`${label} deleted. ${result.data?.deploymentsDeleted||0} deployment(s) removed.`);await renderAdminDashboard();}catch(ex){alert(ex?.message||"Could not delete organiser. Make sure the deleteOrganiserAccount Cloud Function is deployed.");}
+async function removeOrganiserAccessFromControlCentre(uid,label){
+  if(uid===ADMIN_UID){alert("The administrator account cannot be removed here.");return;}
+  if(!confirm(`Remove ${label}'s organiser access and delete every deployment they own? Their Firebase Authentication login record will remain, but the planner will block that UID.`))return;
+  const typed=prompt(`Type REMOVE to delete ${label}'s deployments and block their organiser access.`);
+  if(typed!=="REMOVE")return;
+  try{
+    const ownedSnap=await getDocs(query(collection(db,"missions"),where("ownerUid","==",uid)));
+    for(const missionDoc of ownedSnap.docs)await deleteMissionCascade(missionDoc.id,false);
+    await setDoc(doc(db,"profiles",uid),{role:"organiser",blocked:true,blockedAt:serverTimestamp(),updatedAt:serverTimestamp()},{merge:true});
+    alert(`${label}'s organiser access has been removed. ${ownedSnap.size} deployment(s) deleted. Their Firebase Auth record remains but cannot manage the planner.`);
+    await renderAdminDashboard();
+  }catch(ex){alert(ex?.message||"Could not remove organiser access.");}
+}
+async function unblockOrganiserFromControlCentre(uid,label){
+  if(!confirm(`Restore organiser access for ${label}?`))return;
+  try{await updateDoc(doc(db,"profiles",uid),{blocked:false,unblockedAt:serverTimestamp(),updatedAt:serverTimestamp()});await renderAdminDashboard();}
+  catch(ex){alert(ex?.message||"Could not restore organiser access.");}
 }
 async function renderAdminDashboard(){
   clearUnsubs();
@@ -1000,17 +997,26 @@ async function renderAdminDashboard(){
   const missionData=await Promise.all(missions.map(async m=>{try{const ps=await getDocs(collection(db,"missions",m.id,"players")),players=ps.docs.map(d=>({id:d.id,...d.data()})),plan=computePlan(players,m);return[m.id,{players,plan}];}catch{return[m.id,{players:[],plan:null}];}}));
   const dataMap=new Map(missionData),profileMap=new Map(profiles.map(p=>[p.id,p]));
   missions=missions.map(m=>{const data=dataMap.get(m.id)||{players:[],plan:null};return{...m,ownerName:m.ownerUid===ADMIN_UID?"Administrator":(profileMap.get(m.ownerUid)?.name||m.ownerName||"Organiser"),ownerEmail:profileMap.get(m.ownerUid)?.email||"",responseCount:data.players.length,adminPlayers:data.players,adminPlan:data.plan};}).sort((a,b)=>String(a.date||"").localeCompare(String(b.date||"")));
-  const organiserCards=profiles.length?profiles.map(p=>{const owned=missions.filter(m=>m.ownerUid===p.id),label=p.name||p.email||"Organiser";const deployments=owned.length?owned.map(m=>`<div class="admin-organiser-deployment"><div class="admin-organiser-deployment-main"><div><b>${esc(missionTitle(m))}</b><span>${esc(dateText(m.date))} · ${esc(deploymentShipSummary(m))}</span></div><div class="mission-meta"><span class="pill ${m.closed?"closed":"open"}">${m.closed?"Closed":"Open"}</span><span class="pill">${m.responseCount} response${m.responseCount===1?"":"s"}</span></div></div><div class="actions"><button class="btn primary tiny" data-manage="${m.id}">Manage</button><button class="btn ghost tiny" data-copy="${m.id}">Copy player link</button><button class="btn ghost tiny" data-transfer-mission="${m.id}">Change organiser</button></div><details class="admin-deployment-players"><summary>Players & assignments <span>${m.responseCount}</span></summary><div class="admin-assignment-list">${adminPlayerAssignmentRows(m)}</div></details></div>`).join(""):`<p class="sub">No deployments created yet.</p>`;return `<details class="panel admin-organiser-card"><summary><div><div class="eyebrow">Organiser</div><h2>${esc(label)}</h2><div class="admin-organiser-email">${esc(p.email||"No email stored")}</div></div><div class="admin-organiser-summary-meta"><span class="stat"><b>${owned.length}</b> deployment${owned.length===1?"":"s"}</span><span class="admin-view-hint">View deployments</span></div></summary><div class="admin-organiser-details"><div class="admin-organiser-uid"><span>UID</span><code>${esc(p.id)}</code></div><div class="admin-organiser-account-actions"><button class="btn danger tiny" data-delete-organiser="${p.id}" data-organiser-label="${esc(label)}">Delete organiser + deployments</button></div><div class="admin-organiser-deployments">${deployments}</div></div></details>`;}).join(""):`<section class="empty-state"><h2>No organisers yet</h2><p>Organisers will appear here after they first sign in with a magic link.</p></section>`;
-  main.innerHTML=`<div class="page-head"><div><div class="eyebrow">Administrator</div><h1>Control centre</h1><p class="sub">See organiser accounts, their deployments, players and current optimised assignments.</p></div><button id="adminCreateMissionBtn" class="btn primary">Create deployment</button></div><div class="stat-row"><span class="stat"><b>${profiles.length}</b> organisers</span><span class="stat"><b>${missions.length}</b> deployments</span><span class="stat"><b>${missions.reduce((n,m)=>n+m.responseCount,0)}</b> total responses</span></div><section class="admin-section"><div class="admin-section-head"><div><div class="eyebrow">Accounts</div><h2>Organisers</h2><p class="sub">Open an organiser to see their deployments, players and current assignment quality.</p></div></div><div class="admin-organiser-list">${organiserCards}</div></section><section class="admin-section"><div class="admin-section-head"><div><div class="eyebrow">Global view</div><h2>All deployments</h2><p class="sub">Every deployment, including administrator-owned deployments.</p></div></div><div class="grid cards">${missions.length?missions.map(m=>missionCard(m,true)+`<details class="admin-global-players"><summary>${m.responseCount} players & current assignments</summary><div class="admin-assignment-list">${adminPlayerAssignmentRows(m)}</div></details>`).join(""):`<section class="empty-state"><h2>No deployments yet</h2><p>Create a deployment yourself or wait for an organiser to create one.</p></section>`}</div></section>`;
+  const activeProfiles=profiles.filter(p=>p.blocked!==true),blockedProfiles=profiles.filter(p=>p.blocked===true);
+  const organiserCards=profiles.length?profiles.map(p=>{
+    const owned=missions.filter(m=>m.ownerUid===p.id),label=p.name||p.email||"Organiser",blocked=p.blocked===true;
+    const deployments=owned.length?owned.map(m=>`<div class="admin-organiser-deployment"><div class="admin-organiser-deployment-main"><div><b>${esc(missionTitle(m))}</b><span>${esc(dateText(m.date))} · ${esc(deploymentShipSummary(m))}</span></div><div class="mission-meta"><span class="pill ${m.closed?"closed":"open"}">${m.closed?"Closed":"Open"}</span><span class="pill">${m.responseCount} response${m.responseCount===1?"":"s"}</span></div></div><div class="actions"><button class="btn primary tiny" data-manage="${m.id}">Manage</button><button class="btn ghost tiny" data-copy="${m.id}">Copy player link</button><button class="btn ghost tiny" data-transfer-mission="${m.id}">Change organiser</button></div><details class="admin-deployment-players"><summary>Players & assignments <span>${m.responseCount}</span></summary><div class="admin-assignment-list">${adminPlayerAssignmentRows(m)}</div></details></div>`).join(""):`<p class="sub">No deployments currently owned.</p>`;
+    const accountAction=blocked
+      ?`<button class="btn success tiny" data-unblock-organiser="${p.id}" data-organiser-label="${esc(label)}">Restore organiser access</button>`
+      :`<button class="btn danger tiny" data-remove-organiser="${p.id}" data-organiser-label="${esc(label)}">Remove access + delete deployments</button>`;
+    return `<details class="panel admin-organiser-card${blocked?" blocked-organiser":""}"><summary><div><div class="eyebrow">Organiser ${blocked?"· BLOCKED":""}</div><h2>${esc(label)}</h2><div class="admin-organiser-email">${esc(p.email||"No email stored")}</div></div><div class="admin-organiser-summary-meta"><span class="stat"><b>${owned.length}</b> deployment${owned.length===1?"":"s"}</span><span class="pill ${blocked?"blocked-account":"organiser"}">${blocked?"Access removed":"Active"}</span><span class="admin-view-hint">View details</span></div></summary><div class="admin-organiser-details"><div class="admin-organiser-uid"><span>UID</span><code>${esc(p.id)}</code></div><div class="admin-organiser-account-actions">${accountAction}</div><div class="admin-organiser-deployments">${deployments}</div></div></details>`;
+  }).join(""):`<section class="empty-state"><h2>No organisers yet</h2><p>Organisers will appear here after they first sign in with Google.</p></section>`;
+  main.innerHTML=`<div class="page-head"><div><div class="eyebrow">Administrator</div><h1>Control centre</h1><p class="sub">See organiser accounts, their deployments, players and current optimised assignments.</p></div><button id="adminCreateMissionBtn" class="btn primary">Create deployment</button></div><div class="stat-row"><span class="stat"><b>${activeProfiles.length}</b> active organisers</span><span class="stat"><b>${blockedProfiles.length}</b> blocked</span><span class="stat"><b>${missions.length}</b> deployments</span><span class="stat"><b>${missions.reduce((n,m)=>n+m.responseCount,0)}</b> total responses</span></div><section class="admin-section"><div class="admin-section-head"><div><div class="eyebrow">Accounts</div><h2>Organisers</h2><p class="sub">Open an organiser to see deployments, players and current assignment quality. Removed accounts stay listed as blocked so the same Firebase UID cannot simply regain access.</p></div></div><div class="admin-organiser-list">${organiserCards}</div></section><section class="admin-section"><div class="admin-section-head"><div><div class="eyebrow">Global view</div><h2>All deployments</h2><p class="sub">Every deployment, including administrator-owned deployments.</p></div></div><div class="grid cards">${missions.length?missions.map(m=>missionCard(m,true)+`<details class="admin-global-players"><summary>${m.responseCount} players & current assignments</summary><div class="admin-assignment-list">${adminPlayerAssignmentRows(m)}</div></details>`).join(""):`<section class="empty-state"><h2>No deployments yet</h2><p>Create a deployment yourself or wait for an organiser to create one.</p></section>`}</div></section>`;
   $("#adminCreateMissionBtn").onclick=()=>openMissionSetup();
   document.querySelectorAll("[data-manage]").forEach(b=>b.onclick=()=>openMissionManager(b.dataset.manage));
   document.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>copyMissionLink(b.dataset.copy,b));
   document.querySelectorAll("[data-transfer-mission]").forEach(b=>{b.onclick=()=>{const mission=missions.find(m=>m.id===b.dataset.transferMission);if(mission)openOwnerTransfer(mission);};});
-  document.querySelectorAll("[data-delete-organiser]").forEach(b=>b.onclick=()=>deleteOrganiserFromControlCentre(b.dataset.deleteOrganiser,b.dataset.organiserLabel||"this organiser"));
+  document.querySelectorAll("[data-remove-organiser]").forEach(b=>b.onclick=()=>removeOrganiserAccessFromControlCentre(b.dataset.removeOrganiser,b.dataset.organiserLabel||"this organiser"));
+  document.querySelectorAll("[data-unblock-organiser]").forEach(b=>b.onclick=()=>unblockOrganiserFromControlCentre(b.dataset.unblockOrganiser,b.dataset.organiserLabel||"this organiser"));
   document.querySelectorAll("[data-delete-mission]").forEach(b=>{b.onclick=async()=>{if(confirm("Delete this deployment and all player responses?"))await deleteMissionCascade(b.dataset.deleteMission);};});
 }
 
-async function deleteMissionCascade(id){const [ps,claims]=await Promise.all([getDocs(collection(db,"missions",id,"players")),getDocs(collection(db,"missions",id,"nameClaims"))]);const batch=writeBatch(db);ps.docs.forEach(d=>batch.delete(d.ref));claims.docs.forEach(d=>batch.delete(d.ref));batch.delete(doc(db,"missions",id));await batch.commit();renderAdminDashboard();}
+async function deleteMissionCascade(id,refresh=true){const [ps,claims]=await Promise.all([getDocs(collection(db,"missions",id,"players")),getDocs(collection(db,"missions",id,"nameClaims"))]);const batch=writeBatch(db);ps.docs.forEach(d=>batch.delete(d.ref));claims.docs.forEach(d=>batch.delete(d.ref));batch.delete(doc(db,"missions",id));await batch.commit();if(refresh)await renderAdminDashboard();}
 
 function localProfilesKey(missionId){return `bcCrewProfiles:${missionId}`;}
 function getLocalProfiles(missionId){try{return JSON.parse(localStorage.getItem(localProfilesKey(missionId))||"{}")||{};}catch{return{};}}

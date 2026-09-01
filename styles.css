@@ -260,3 +260,28 @@ a{color:inherit}.app-shell{width:min(1580px,100%);margin:auto;padding:14px}.topb
 
 /* Admin assignment audit and organiser ownership controls */
 .admin-organiser-account-actions{display:flex;justify-content:flex-end;margin:8px 0 12px}.admin-deployment-players,.admin-global-players{margin-top:9px;border:1px solid rgba(112,221,245,.12);border-radius:9px;background:#061523;overflow:hidden}.admin-deployment-players>summary,.admin-global-players>summary{cursor:pointer;list-style:none;padding:8px 10px;font:700 9px "Orbitron";letter-spacing:.08em;text-transform:uppercase;color:var(--cyan);display:flex;justify-content:space-between;gap:8px}.admin-deployment-players>summary::-webkit-details-marker,.admin-global-players>summary::-webkit-details-marker{display:none}.admin-assignment-list{display:grid;gap:5px;padding:8px;border-top:1px solid rgba(112,221,245,.1)}.admin-assignment-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px;border:1px solid rgba(112,221,245,.09);border-radius:8px;background:#071a2b}.admin-assignment-row b{display:block;font-size:17px}.admin-assignment-row span{display:block;color:var(--muted);font-size:14px;margin-top:1px}.admin-assignment-result{font:700 10px "Orbitron";letter-spacing:.04em;text-transform:uppercase;text-align:right;color:var(--gold)}.admin-assignment-result.avoid{color:var(--red)}.admin-assignment-result small{display:block;margin-top:3px;color:var(--muted);font:600 11px "Rajdhani";letter-spacing:0;text-transform:none}.admin-global-players{grid-column:1/-1;margin-top:-7px;margin-bottom:8px}.admin-owner-section{border-color:rgba(239,199,111,.24);background:linear-gradient(180deg,rgba(239,199,111,.055),rgba(6,22,37,.25))}@media(max-width:650px){.admin-assignment-row{grid-template-columns:1fr}.admin-assignment-result{text-align:left}.admin-organiser-account-actions{justify-content:flex-start}}
+
+
+/* Spark-only organiser authentication */
+.auth-tabs{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:17px 0 12px;padding:4px;border:1px solid rgba(112,221,245,.16);border-radius:11px;background:#061625}
+.auth-tab{border:0;border-radius:8px;padding:9px 10px;background:transparent;color:#8fa8bc;font:700 10px "Orbitron";letter-spacing:.07em;text-transform:uppercase;cursor:pointer}
+.auth-tab.selected{background:linear-gradient(180deg,#164837,#10362a);color:#d5f8e6;box-shadow:inset 0 0 0 1px rgba(101,221,165,.28)}
+.organiser-auth-form{display:grid;gap:0}.organiser-auth-form .field{margin-top:0;margin-bottom:10px}.auth-actions{align-items:center}.verification-card{max-width:720px;padding:22px}.verification-card h2{margin-top:5px}.verification-note{display:grid;gap:3px;margin-top:15px;padding:10px 12px;border:1px solid rgba(101,221,165,.18);border-radius:9px;background:rgba(16,55,42,.38)}.verification-note b{font:700 10px "Orbitron";letter-spacing:.06em;text-transform:uppercase;color:var(--green)}.verification-note span{color:var(--muted);font-size:14px}.pill.blocked-account{border-color:#88434f;color:#ffc1ca;background:#30151f}.blocked-account-state{border-color:rgba(255,143,155,.24)}.admin-organiser-card.blocked-organiser{border-color:rgba(255,143,155,.23);background:linear-gradient(180deg,rgba(55,20,31,.72),rgba(18,12,21,.96))}.admin-organiser-card.blocked-organiser:before{background:var(--red)}
+@media(max-width:520px){.auth-tabs{grid-template-columns:1fr}.auth-actions .btn{width:100%}}
+
+
+/* Google organiser sign-in */
+.google-signin-btn{
+  width:100%;min-height:52px;margin-top:18px;padding:0 18px;
+  display:flex;align-items:center;justify-content:center;gap:12px;
+  border:1px solid #d7dce1;border-radius:10px;background:#fff;color:#1f1f1f;
+  font:600 15px Arial,Helvetica,sans-serif;letter-spacing:0;text-transform:none;
+  cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.18);
+}
+.google-signin-btn:hover{background:#f8f9fa;border-color:#c9d0d6;transform:translateY(-1px)}
+.google-signin-btn:focus-visible{outline:2px solid var(--gold);outline-offset:3px}
+.google-signin-btn:disabled{opacity:.6;cursor:wait;transform:none}
+.google-mark{width:20px;height:20px;display:block;flex:0 0 20px}
+.google-auth-note{display:grid;gap:4px;margin-top:14px;padding:11px 12px;border:1px solid rgba(112,221,245,.13);border-radius:10px;background:rgba(6,23,39,.62)}
+.google-auth-note b{font:700 9px "Orbitron";letter-spacing:.08em;text-transform:uppercase;color:var(--cyan)}
+.google-auth-note span{color:var(--muted);font-size:14px;line-height:1.35}
