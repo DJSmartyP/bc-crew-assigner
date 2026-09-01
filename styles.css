@@ -972,7 +972,7 @@ details.response-row .preference-chips{margin-top:5px}
 }
 
 .response-editor-header h3 {
-  font-size: clamp(1.1rem, 4vw, 2.2rem);
+  font-size: clamp(1.1rem, 4vw, 2.6rem);
   max-width:100%;
   overflow-wrap:anywhere;
   word-break:break-word;
@@ -1042,4 +1042,10 @@ details.response-row .preference-chips{margin-top:5px}
   padding:8px 14px;
   font-size:13px;
   border-radius:999px;
+}
+
+
+/* Player editor name size reduction */
+.response-editor-header h3 {
+  font-size: clamp(1.1rem, 3.5vw, 2.2rem);
 }

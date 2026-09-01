@@ -964,8 +964,7 @@ document.querySelectorAll("[data-delete-player]").forEach(b=>b.onclick=()=>delet
 
 function renderResponseSelector(plan){
   if(!missionPlayers.length)return `<div class="selected-response-editor empty-editor"><p class="sub">No responses yet.</p></div>`;
-  const cap=(activeMission.ships?.length||1)*MAX_PER_SHIP;
-  const players=[...missionPlayers].sort(prioritySort).slice(0,cap);
+  const players=[...missionPlayers].sort(prioritySort);
   if(selectedResponsePlayerId && !players.some(p=>p.id===selectedResponsePlayerId)) selectedResponsePlayerId=null;
   const selected=players.find(p=>p.id===selectedResponsePlayerId);
   return `<select id="responseSelector" class="response-selector">
@@ -1022,6 +1021,11 @@ function openOrganiserPlayerEditor(player=null){
     const id=player?.id||randId("org");
     const payload={name:$("#orgName").value.trim(),shipPref:$("#orgShip")?.value||"",prefs:[$("#orgPref1").value,$("#orgPref2").value,$("#orgPref3").value],dislikes:readChecks($("#orgDislikes"))};
     const fixedRole=$("#orgFixedRole").value,fixedShip=$("#orgFixedShip")?.value||"";
+    const capacityLimit=(activeMission.ships?.length||1)*14;
+    if(!player && missionPlayers.length>=capacityLimit){
+      setMessage($("#orgPlayerMessage"),`This deployment is full. Maximum crew size is ${capacityLimit} for this deployment.`,`error`);
+      return;
+    }
     const error=validatePrefs(payload,missionPlayers,player?.id||"",Boolean(fixedRole||fixedShip));if(error){setMessage($("#orgPlayerMessage"),error,"error");return;}
     if(fixedRole&&fixedShip){const clash=Object.entries(activeMission.overrides||{}).find(([pid,x])=>pid!==id&&x.role===fixedRole&&x.shipId===fixedShip);if(clash){setMessage($("#orgPlayerMessage"),"That exact ship + station is already locked to someone else.","error");return;}}
     if(fixedRole){const sameRole=Object.entries(activeMission.overrides||{}).filter(([pid,x])=>pid!==id&&x.role===fixedRole).length;if(sameRole>=(activeMission.ships?.length||1)){setMessage($("#orgPlayerMessage"),`There are only ${activeMission.ships?.length||1} copies of ${fixedRole} across this deployment. Remove another locked ${fixedRole} assignment first.`,"error");return;}}
