@@ -971,6 +971,36 @@ function adminPlayerAssignmentRows(m){
     return `<div class="admin-assignment-row"><div><b>${esc(p.name)}</b><span>${a?`${esc(shipName)} · ${esc(a.role)}`:"Not currently assigned"}</span></div><div class="admin-assignment-result ${a?.quality?.kind==="avoid"?"avoid":""}">${esc(quality)}${p.shipPref?`<small>${a?.shipMet?"Ship preference met":`Preferred ${esc(displayShip(shipPref,shipPrefIndex))}`}</small>`:""}${a?.forced?`<small>Fixed by organiser</small>`:""}</div></div>`;
   }).join("");
 }
+
+function adminGlobalRoleRoster(m){
+  const plan=m.adminPlan||computePlan(m.adminPlayers||[],m);
+  const ships=m.ships||[];
+  if(!ships.length)return `<div class="admin-global-roster-empty">No ships configured.</div>`;
+
+  const shipBlocks=ships.map((ship,shipIndex)=>{
+    const shipPlan=plan?.byShip?.find(x=>x.ship?.id===ship.id)||{assignments:[],allowed:[...MAIN10]};
+    const assignmentMap=new Map((shipPlan.assignments||[]).map(a=>[a.role,a]));
+    const allowed=new Set(shipPlan.allowed||[]);
+    const columns=[ROLE_NAMES.slice(0,7),ROLE_NAMES.slice(7,14)];
+    const roleColumns=columns.map(roles=>`<div class="admin-role-column">${roles.map(role=>{
+      const a=assignmentMap.get(role);
+      const info=roleFor(role);
+      const inactive=!allowed.has(role)&&!a;
+      const name=a?.name||(inactive?"Not in use":"To be decided");
+      const detail=a?`${adminQualityText(a)}${a.shipMet?"":" · ship preference not met"}${a.forced?" · fixed":""}`:(inactive?"Station inactive":"Awaiting assignment");
+      return `<div class="admin-role-slot ${teamClass(info?.team||"command")}${inactive?" inactive":""}${a?.quality?.kind==="avoid"?" avoid":""}"><div class="admin-role-slot-copy"><span class="admin-role-name">${esc(role)}</span><b>${esc(name)}</b></div><span class="admin-role-detail">${esc(detail)}</span></div>`;
+    }).join("")}</div>`).join("");
+    const badge=shipBadgeUrl(ship);
+    const assigned=(shipPlan.assignments||[]).length;
+    return `<section class="admin-global-ship-roster ${shipClass(ship)}"><div class="admin-global-ship-head"><div class="admin-global-ship-identity">${badge?`<img src="${esc(badge)}" alt="" class="admin-global-ship-badge">`:""}<div><span>Current assignments</span><b>${esc(displayShip(ship,shipIndex))}</b></div></div><span class="pill">${assigned}/14 filled</span></div><div class="admin-role-columns">${roleColumns}</div></section>`;
+  }).join("");
+
+  return `<div class="admin-global-roster"><div class="admin-global-ship-grid">${shipBlocks}</div></div>`;
+}
+
+function adminGlobalDeploymentRow(m){
+  return `<div class="admin-global-deployment-row">${missionCard(m,true)}${adminGlobalRoleRoster(m)}</div>`;
+}
 async function removeOrganiserAccessFromControlCentre(uid,label){
   if(uid===ADMIN_UID){alert("The administrator account cannot be removed here.");return;}
   if(!confirm(`Remove ${label}'s organiser access and delete every deployment they own? Their Firebase Authentication login record will remain, but the planner will block that UID.`))return;
@@ -1008,7 +1038,7 @@ async function renderAdminDashboard(){
   };
   const activeOrganiserCards=activeProfiles.length?activeProfiles.map(renderOrganiserCard).join(""):`<section class="empty-state compact"><h2>No active organisers</h2><p>New organisers will appear here after they first sign in with Google.</p></section>`;
   const removedOrganisers=blockedProfiles.length?`<details class="panel admin-removed-organisers"><summary><div><div class="eyebrow">Archive</div><b>Removed organisers</b></div><div class="admin-removed-summary"><span class="pill blocked-account">${blockedProfiles.length}</span><span class="admin-view-hint">Show removed</span></div></summary><div class="admin-removed-body"><p class="sub">These accounts are blocked from organiser access. They stay here so the same Firebase UID cannot automatically regain access. Open an account to restore it.</p><div class="admin-organiser-list">${blockedProfiles.map(renderOrganiserCard).join("")}</div></div></details>`:"";
-  main.innerHTML=`<div class="page-head"><div><div class="eyebrow">Administrator</div><h1>Control centre</h1><p class="sub">See organiser accounts, their deployments, players and current optimised assignments.</p></div><button id="adminCreateMissionBtn" class="btn primary">Create deployment</button></div><div class="stat-row"><span class="stat"><b>${activeProfiles.length}</b> active organisers</span><span class="stat"><b>${blockedProfiles.length}</b> removed</span><span class="stat"><b>${missions.length}</b> deployments</span><span class="stat"><b>${missions.reduce((n,m)=>n+m.responseCount,0)}</b> total responses</span></div><section class="admin-section"><div class="admin-section-head"><div><div class="eyebrow">Accounts</div><h2>Organisers</h2><p class="sub">Active organisers are shown here. Removed accounts are kept separately below and stay blocked until you restore them.</p></div></div><div class="admin-organiser-list">${activeOrganiserCards}</div>${removedOrganisers}</section><section class="admin-section"><div class="admin-section-head"><div><div class="eyebrow">Global view</div><h2>All deployments</h2><p class="sub">Every deployment, including administrator-owned deployments.</p></div></div><div class="grid cards">${missions.length?missions.map(m=>missionCard(m,true)+`<details class="admin-global-players"><summary>${m.responseCount} players & current assignments</summary><div class="admin-assignment-list">${adminPlayerAssignmentRows(m)}</div></details>`).join(""):`<section class="empty-state"><h2>No deployments yet</h2><p>Create a deployment yourself or wait for an organiser to create one.</p></section>`}</div></section>`;
+  main.innerHTML=`<div class="page-head"><div><div class="eyebrow">Administrator</div><h1>Control centre</h1><p class="sub">See organiser accounts, their deployments, players and current optimised assignments.</p></div><button id="adminCreateMissionBtn" class="btn primary">Create deployment</button></div><div class="stat-row"><span class="stat"><b>${activeProfiles.length}</b> active organisers</span><span class="stat"><b>${blockedProfiles.length}</b> removed</span><span class="stat"><b>${missions.length}</b> deployments</span><span class="stat"><b>${missions.reduce((n,m)=>n+m.responseCount,0)}</b> total responses</span></div><section class="admin-section"><div class="admin-section-head"><div><div class="eyebrow">Accounts</div><h2>Organisers</h2><p class="sub">Active organisers are shown here. Removed accounts are kept separately below and stay blocked until you restore them.</p></div></div><div class="admin-organiser-list">${activeOrganiserCards}</div>${removedOrganisers}</section><section class="admin-section"><div class="admin-section-head"><div><div class="eyebrow">Global view</div><h2>All deployments</h2><p class="sub">Every deployment, including administrator-owned deployments.</p></div></div><div class="grid cards admin-global-deployment-list">${missions.length?missions.map(m=>adminGlobalDeploymentRow(m)).join(""):`<section class="empty-state"><h2>No deployments yet</h2><p>Create a deployment yourself or wait for an organiser to create one.</p></section>`}</div></section>`;
   $("#adminCreateMissionBtn").onclick=()=>openMissionSetup();
   document.querySelectorAll("[data-manage]").forEach(b=>b.onclick=()=>openMissionManager(b.dataset.manage));
   document.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>copyMissionLink(b.dataset.copy,b));
