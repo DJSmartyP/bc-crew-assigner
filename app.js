@@ -658,7 +658,7 @@ function fitCanvasText(ctx,text,maxWidth,startSize,minSize,weight="700",family="
   }
   return size;
 }
-function drawCanvasText(ctx,text,x,y,{size=28,weight="600",family="Rajdhani",colour="#172531",align="left",baseline="alphabetic",maxWidth=null}={}){
+function drawCanvasText(ctx,text,x,y,{size=28,weight="600",family="Orbitron",colour="#172531",align="left",baseline="alphabetic",maxWidth=null}={}){
   canvasFont(ctx,size,weight,family);
   ctx.fillStyle=colour;
   ctx.textAlign=align;
@@ -725,10 +725,10 @@ async function generateCrewPdf(){
     if(document.fonts?.ready){
       await document.fonts.ready;
       await Promise.allSettled([
-        document.fonts.load('800 34px Orbitron'),
-        document.fonts.load('700 24px Orbitron'),
-        document.fonts.load('600 28px Rajdhani'),
-        document.fonts.load('700 28px Rajdhani')
+        document.fonts.load('800 44px Orbitron'),
+        document.fonts.load('700 38px Orbitron'),
+        document.fonts.load('600 32px Orbitron'),
+        document.fonts.load('700 40px Orbitron')
       ]);
     }
 
@@ -824,15 +824,15 @@ async function generateCrewPdf(){
         drawHexBadge(ctx,W-X(22),Y(17),X(10),initials,shipName.toLowerCase()==="havock"?"#9D6FDC":"#41D3EB");
       }
 
-      drawCanvasText(ctx,`SHIP ${String(shipIndex+1).padStart(2,"0")} // ${shipName.toUpperCase()}`,W-X(10),Y(35.5),{size:39,weight:"800",family:"Orbitron",colour:"#F7FBFE",align:"right"});
-      drawCanvasText(ctx,`${assignedCount} CREW ASSIGNED`,W-X(10),Y(42.5),{size:25,weight:"700",family:"Orbitron",colour:"#AFC7D8",align:"right"});
-      drawCanvasText(ctx,`DEPLOYMENT ID // ${deploymentCode}`,W-X(10),Y(49.5),{size:20,weight:"600",family:"Orbitron",colour:"#688BA3",align:"right"});
+      drawCanvasText(ctx,`SHIP ${String(shipIndex+1).padStart(2,"0")} // ${shipName.toUpperCase()}`,W-X(10),Y(35.5),{size:46,weight:"800",family:"Orbitron",colour:"#F7FBFE",align:"right"});
+      drawCanvasText(ctx,`${assignedCount} CREW ASSIGNED`,W-X(10),Y(42.5),{size:29,weight:"700",family:"Orbitron",colour:"#AFC7D8",align:"right"});
+      drawCanvasText(ctx,`DEPLOYMENT ID // ${deploymentCode}`,W-X(10),Y(49.5),{size:22,weight:"700",family:"Orbitron",colour:"#688BA3",align:"right"});
 
       // Gold provenance line requested by organiser.
-      drawCanvasText(ctx,"CREW POSITIONS OPTIMISED BY INTERSTELLAR DEPLOYMENT PLANNER",X(12.5),Y(48.8),{size:21,weight:"700",family:"Orbitron",colour:"#F2BC48"});
+      drawCanvasText(ctx,"CREW POSITIONS OPTIMISED BY INTERSTELLAR DEPLOYMENT PLANNER",X(12.5),Y(48.8),{size:24,weight:"800",family:"Orbitron",colour:"#F2BC48"});
 
       const missionTitleText=missionTitle(activeMission);
-      const missionSize=fitCanvasText(ctx,missionTitleText,X(140),52,31,"800","Orbitron");
+      const missionSize=fitCanvasText(ctx,missionTitleText,X(140),58,36,"800","Orbitron");
       drawCanvasText(ctx,missionTitleText,X(12.5),Y(56),{size:missionSize,weight:"800",family:"Orbitron",colour:"#F8FBFD"});
 
       // Metadata rail.
@@ -846,18 +846,18 @@ async function generateCrewPdf(){
         {x:170,label:"CHOICES",value:activeMission.closed?"CLOSED":"OPEN"}
       ];
       for(const item of metadata){
-        drawCanvasText(ctx,item.label,X(item.x),Y(64.4),{size:18,weight:"700",family:"Orbitron",colour:"#718697"});
-        drawCanvasText(ctx,item.value,X(item.x),Y(70.2),{size:28,weight:"700",family:"Rajdhani",colour:item.label==="CHOICES"?(activeMission.closed?"#9B3E4A":"#287F58"):"#172531"});
+        drawCanvasText(ctx,item.label,X(item.x),Y(64.4),{size:22,weight:"800",family:"Orbitron",colour:"#718697"});
+        drawCanvasText(ctx,item.value,X(item.x),Y(70.2),{size:31,weight:"700",family:"Orbitron",colour:item.label==="CHOICES"?(activeMission.closed?"#9B3E4A":"#287F58"):"#172531"});
       }
 
       // Manifest heading.
       const manifestTop=Y(82);
-      drawCanvasText(ctx,`${shipName.toUpperCase()} // CREW MANIFEST`,margin,manifestTop,{size:34,weight:"800",family:"Orbitron",colour:"#071727"});
+      drawCanvasText(ctx,`${shipName.toUpperCase()} // CREW MANIFEST`,margin,manifestTop,{size:39,weight:"800",family:"Orbitron",colour:"#071727"});
       const balancedTwo=(activeMission?.ships?.length||1)===2&&activeMission?.balanceShips!==false;
       const shuttleStatus=shuttleNormallyAvailable
         ?"FULL STATION GRID ACTIVE"
         :(balancedTwo?"SHUTTLE HELD UNTIL RESPONSE 21":"SHUTTLE ROLES GREYED UNTIL 11 CREW");
-      drawCanvasText(ctx,shuttleStatus,W-margin,manifestTop,{size:19,weight:"700",family:"Orbitron",colour:shuttleNormallyAvailable?"#168CA0":"#7A8792",align:"right"});
+      drawCanvasText(ctx,shuttleStatus,W-margin,manifestTop,{size:21,weight:"800",family:"Orbitron",colour:shuttleNormallyAvailable?"#168CA0":"#7A8792",align:"right"});
       ctx.fillStyle="#41D3EB";ctx.fillRect(margin,manifestTop+Y(2.6),W-(margin*2),4);
       ctx.fillStyle="#F2BC48";ctx.fillRect(margin,manifestTop+Y(2.6),X(25),4);
 
@@ -882,9 +882,9 @@ async function generateCrewPdf(){
         drawHudCorners(ctx,margin+3,y+3,blockW-6,blockH-6,inactiveTeam?"rgba(105,119,131,.35)":"rgba(65,211,235,.28)",X(2.6),2);
 
         fillRoundRect(ctx,margin,y,blockW,headH,X(1.4),headerFill,null);
-        drawCanvasText(ctx,team.name.toUpperCase(),margin+X(3.2),y+headH*.57,{size:23,weight:"800",family:"Orbitron",colour:headerText,baseline:"middle"});
+        drawCanvasText(ctx,team.name.toUpperCase(),margin+X(3.2),y+headH*.57,{size:27,weight:"800",family:"Orbitron",colour:headerText,baseline:"middle"});
         const teamStatus=inactiveTeam?"NOT IN USE":"STATION GROUP";
-        drawCanvasText(ctx,teamStatus,W-margin-X(3.2),y+headH*.57,{size:17,weight:"700",family:"Orbitron",colour:inactiveTeam?"#697783":palette.text,align:"right",baseline:"middle"});
+        drawCanvasText(ctx,teamStatus,W-margin-X(3.2),y+headH*.57,{size:19,weight:"800",family:"Orbitron",colour:inactiveTeam?"#697783":palette.text,align:"right",baseline:"middle"});
 
         y+=headH+Y(1.1);
         for(const role of team.roles){
@@ -899,8 +899,8 @@ async function generateCrewPdf(){
 
           fillRoundRect(ctx,margin+X(2),y,blockW-X(4),rowH-Y(.8),X(.9),rowFill,"#D3DEE6",1.5);
           ctx.fillStyle=edge;ctx.fillRect(margin+X(2),y,X(.8),rowH-Y(.8));
-          drawCanvasText(ctx,role,margin+X(5.2),y+(rowH-Y(.8))/2,{size:29,weight:"700",family:"Rajdhani",colour:roleColour,baseline:"middle"});
-          drawCanvasText(ctx,value,W-margin-X(5.2),y+(rowH-Y(.8))/2,{size:30,weight:assignment?"700":"600",family:assignment?"Orbitron":"Rajdhani",colour:valueColour,align:"right",baseline:"middle"});
+          drawCanvasText(ctx,role,margin+X(5.2),y+(rowH-Y(.8))/2,{size:33,weight:"700",family:"Orbitron",colour:roleColour,baseline:"middle"});
+          drawCanvasText(ctx,value,W-margin-X(5.2),y+(rowH-Y(.8))/2,{size:35,weight:assignment?"700":"600",family:"Orbitron",colour:valueColour,align:"right",baseline:"middle"});
           y+=rowH;
         }
         y+=groupGap;
@@ -910,11 +910,11 @@ async function generateCrewPdf(){
       const footerY=H-Y(15);
       ctx.strokeStyle="#C9D8E3";ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(margin,footerY);ctx.lineTo(W-margin,footerY);ctx.stroke();
       if(brandIcon){ctx.drawImage(brandIcon,margin,H-Y(12.3),X(8),X(8));}
-      drawCanvasText(ctx,"INTERSTELLAR DEPLOYMENT PLANNER",margin+(brandIcon?X(10):0),H-Y(8.8),{size:20,weight:"800",family:"Orbitron",colour:"#071727"});
-      drawCanvasText(ctx,"SYSTEM-GENERATED CREW MANIFEST",margin+(brandIcon?X(10):0),H-Y(5.2),{size:16,weight:"700",family:"Orbitron",colour:"#728596"});
+      drawCanvasText(ctx,"INTERSTELLAR DEPLOYMENT PLANNER",margin+(brandIcon?X(10):0),H-Y(8.8),{size:22,weight:"800",family:"Orbitron",colour:"#071727"});
+      drawCanvasText(ctx,"SYSTEM-GENERATED CREW MANIFEST",margin+(brandIcon?X(10):0),H-Y(5.2),{size:18,weight:"700",family:"Orbitron",colour:"#728596"});
       const generated=new Intl.DateTimeFormat("en-GB",{dateStyle:"medium",timeStyle:"short"}).format(new Date());
-      drawCanvasText(ctx,`GENERATED ${generated.toUpperCase()}`,W-margin,H-Y(8.8),{size:16,weight:"700",family:"Orbitron",colour:"#728596",align:"right"});
-      drawCanvasText(ctx,`PAGE ${pageIndex+1} / ${plan.byShip.length}`,W-margin,H-Y(5.2),{size:16,weight:"700",family:"Orbitron",colour:"#728596",align:"right"});
+      drawCanvasText(ctx,`GENERATED ${generated.toUpperCase()}`,W-margin,H-Y(8.8),{size:18,weight:"700",family:"Orbitron",colour:"#728596",align:"right"});
+      drawCanvasText(ctx,`PAGE ${pageIndex+1} / ${plan.byShip.length}`,W-margin,H-Y(5.2),{size:18,weight:"700",family:"Orbitron",colour:"#728596",align:"right"});
 
       const img=canvas.toDataURL("image/jpeg",.94);
       if(pageIndex>0)pdf.addPage();
