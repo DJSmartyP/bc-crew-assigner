@@ -769,3 +769,48 @@ details.response-row .preference-chips{margin-top:5px}
   .response-detail-line>b{text-align:left}
   .player-list-actions{justify-content:flex-start}
 }
+
+
+/* Safe response list layout patch - CSS only */
+.response-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  align-items: start;
+}
+
+.response-row {
+  border-radius: 10px;
+  padding: 0;
+  overflow: hidden;
+  min-height: 58px;
+}
+
+.response-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+  padding: 9px 11px;
+}
+
+.response-name {
+  font-size: 17px;
+  line-height: 1.1;
+}
+
+.response-meta {
+  font-size: 12px;
+  line-height: 1.2;
+  color: var(--muted);
+}
+
+.response-row[open],
+.response-row:has(details[open]) {
+  grid-column: 1 / -1;
+}
+
+@media(max-width:900px){
+  .response-list {
+    grid-template-columns: 1fr;
+  }
+}
