@@ -959,15 +959,6 @@ $("#responseSelector").onchange=(e)=>{
   selectedResponsePlayerId=e.target.value||null;
   renderManagerState();
 };
-$("#responseSearch").oninput=(e)=>{
-  const query=(e.target.value||"").toLowerCase();
-  const selector=$("#responseSelector");
-  if(!selector)return;
-  Array.from(selector.options).forEach((option,index)=>{
-    if(index===0){option.hidden=false;return;}
-    option.hidden=Boolean(query && !option.textContent.toLowerCase().includes(query));
-  });
-};
 document.querySelectorAll("[data-edit-player]").forEach(b=>b.onclick=()=>openOrganiserPlayerEditor(missionPlayers.find(p=>p.id===b.dataset.editPlayer)));
 document.querySelectorAll("[data-delete-player]").forEach(b=>b.onclick=()=>deleteOrganiserPlayer(b.dataset.deletePlayer));}
 
@@ -976,10 +967,7 @@ function renderResponseSelector(plan){
   const players=[...missionPlayers].sort(prioritySort);
   if(selectedResponsePlayerId && !players.some(p=>p.id===selectedResponsePlayerId)) selectedResponsePlayerId=null;
   const selected=players.find(p=>p.id===selectedResponsePlayerId);
-  return `<div class="response-search">
-    <input id="responseSearch" class="response-search-input" placeholder="Search players..." value="">
-  </div>
-  <select id="responseSelector" class="response-selector">
+  return `<select id="responseSelector" class="response-selector">
     <option value="">Select a player...</option>
     ${players.map(p=>`<option value="${p.id}" ${p.id===selectedResponsePlayerId?"selected":""}>${esc(p.name)}</option>`).join("")}
   </select>
@@ -1007,7 +995,7 @@ function responseRow(p,plan){
   const lockText=ov?.role||ov?.shipId ? "Locked by organiser" : "";
   return `<div class="response-editor-card">
     <div class="response-editor-header">
-      <div><h3>${esc(p.name)}</h3><div class="response-current">${currentText}</div></div>
+      <div class="response-editor-identity"><h3 class="response-editor-name">${esc(p.name)}</h3><div class="response-current">${currentText}</div></div>
     </div>
     ${multiShip?`<div class="response-detail-line"><span>Ship preference</span><b>${ship>=0?esc(displayShip(activeMission.ships[ship],ship)):"No preference"}</b></div>`:""}
     <div class="response-detail-block"><span class="response-detail-label">Station preferences</span><div class="preference-chips">${stationPreferenceChips(p.prefs||[])}</div></div>
