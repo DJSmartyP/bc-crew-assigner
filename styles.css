@@ -845,3 +845,35 @@ details.response-row .preference-chips{margin-top:5px}
   }
 }
 
+
+
+/* Response picker safe layout adjustment - CSS only */
+.response-top{
+  display:flex;
+  flex-direction:column;
+  justify-content:flex-start;
+  align-items:flex-start;
+  gap:2px;
+}
+
+.response-name{
+  font-size:19px;
+  font-weight:700;
+  line-height:1.1;
+}
+
+.response-meta{
+  color:var(--muted);
+  font-size:14px;
+  line-height:1.25;
+}
+
+/* Keep response entries compact and readable */
+.response-row{
+  padding:10px;
+}
+
+/* Expanded response details can use the available width */
+.response-row[open]{
+  width:100%;
+}
