@@ -952,12 +952,23 @@ async function generateCrewPdf(){
 }
 
 function renderManagerShell(){const m=activeMission;main.innerHTML=`<div class="page-head"><div><button id="backDashboard" class="btn ghost tiny">← Dashboard</button><div class="eyebrow" style="margin-top:10px">Crew management</div><h1>${esc(missionTitle(m))}</h1><p class="sub">${esc(dateText(m.date))}</p></div><div class="actions"><button id="downloadCrewPdfBtn" class="btn primary">Download crew PDF</button><button id="editMissionBtn" class="btn ghost">Deployment setup</button><button id="closeChoicesBtn" class="btn ${m.closed?"success":"danger"}">${m.closed?"Reopen choices":"Close choices"}</button></div></div><div class="grid two"><aside><section class="panel sticky"><h2>Player link</h2><p class="sub">Send this link to everyone who should add their preferences.</p><div class="share-box"><input id="managerShareLink" readonly value="${esc(buildMissionLink(m.id))}"><button id="managerCopy" class="btn primary tiny">Copy link</button></div><div class="stat-row" id="managerStats"></div><div class="actions"><button id="addPlayerBtn" class="btn ghost">Add someone</button></div><div id="managerMessage" class="message"></div></section><section class="panel"><h2>Responses</h2><div id="responseList" class="response-list"></div></section></aside><section class="panel"><div class="eyebrow">Live suggestion</div><h2>Current crew plan</h2><p class="sub">The whole suggestion is recalculated whenever a preference changes. Fixed organiser choices are worked around automatically.</p><div id="managerPlan"></div></section></div>`;$("#backDashboard").onclick=()=>{clearUnsubs();currentRole==="admin"?renderAdminDashboard():renderOrganiserDashboard();};$("#downloadCrewPdfBtn").onclick=generateCrewPdf;$("#editMissionBtn").onclick=()=>openMissionSetup(activeMission);$("#managerCopy").onclick=()=>copyMissionLink(m.id,$("#managerCopy"));$("#closeChoicesBtn").onclick=async()=>{await updateDoc(doc(db,"missions",m.id),{closed:!activeMission.closed,updatedAt:serverTimestamp()});};$("#addPlayerBtn").onclick=()=>openOrganiserPlayerEditor();}
-function renderManagerState(){if(!activeMission||!$("#managerPlan"))return;const cap=(activeMission.ships?.length||1)*MAX_PER_SHIP,plan=computePlan(missionPlayers,activeMission);$("#closeChoicesBtn").textContent=activeMission.closed?"Reopen choices":"Close choices";$("#closeChoicesBtn").className=`btn ${activeMission.closed?"success":"danger"}`;$("#managerStats").innerHTML=`<span class="stat"><b>${missionPlayers.length}</b> responses</span><span class="stat"><b>${cap}</b> places</span><span class="stat"><b>${plan.metrics.first}</b> first choices</span>${plan.metrics.avoid?`<span class="stat"><b>${plan.metrics.avoid}</b> last-resort roles</span>`:""}`;setMessage($("#managerMessage"),plan.error||"",plan.error?"error":"");$("#managerPlan").innerHTML=renderPlan(plan,activeMission,{organiser:true});$("#responseList").innerHTML=missionPlayers.length?[...missionPlayers].sort(prioritySort).map(p=>responseRow(p)).join(""):`<p class="sub">No responses yet.</p>`;document.querySelectorAll("[data-edit-player]").forEach(b=>b.onclick=()=>openOrganiserPlayerEditor(missionPlayers.find(p=>p.id===b.dataset.editPlayer)));document.querySelectorAll("[data-delete-player]").forEach(b=>b.onclick=()=>deleteOrganiserPlayer(b.dataset.deletePlayer));}
-function responseRow(p){
+function renderManagerState(){if(!activeMission||!$("#managerPlan"))return;const cap=(activeMission.ships?.length||1)*MAX_PER_SHIP,plan=computePlan(missionPlayers,activeMission);$("#closeChoicesBtn").textContent=activeMission.closed?"Reopen choices":"Close choices";$("#closeChoicesBtn").className=`btn ${activeMission.closed?"success":"danger"}`;$("#managerStats").innerHTML=`<span class="stat"><b>${missionPlayers.length}</b> responses</span><span class="stat"><b>${cap}</b> places</span><span class="stat"><b>${plan.metrics.first}</b> first choices</span>${plan.metrics.avoid?`<span class="stat"><b>${plan.metrics.avoid}</b> last-resort roles</span>`:""}`;setMessage($("#managerMessage"),plan.error||"",plan.error?"error":"");$("#managerPlan").innerHTML=renderPlan(plan,activeMission,{organiser:true});$("#responseList").innerHTML=missionPlayers.length?[...missionPlayers].sort(prioritySort).map(p=>responseRow(p,plan)).join(""):`<p class="sub">No responses yet.</p>`;document.querySelectorAll("[data-edit-player]").forEach(b=>b.onclick=()=>openOrganiserPlayerEditor(missionPlayers.find(p=>p.id===b.dataset.editPlayer)));document.querySelectorAll("[data-delete-player]").forEach(b=>b.onclick=()=>deleteOrganiserPlayer(b.dataset.deletePlayer));}
+function stationPreferenceChips(prefs=[]){
+  const chosen=(prefs||[]).filter(Boolean);
+  if(!chosen.length)return `<span class="preference-chip neutral">No station preference</span>`;
+  return chosen.map((role,index)=>{
+    if(role===FLEX)return `<span class="preference-chip neutral">${index+1}. No preference / fill a gap</span>`;
+    const info=roleFor(role);
+    return `<span class="preference-chip ${teamClass(info?.team||"command")}">${index+1}. ${esc(role)}</span>`;
+  }).join("");
+}
+function responseRow(p,plan){
   const ov=getOverride(activeMission,p.id);
-  const pref=stationPrefsText(p.prefs||[]);
   const multiShip=(activeMission.ships||[]).length>1;
   const ship=p.shipPref?(activeMission.ships||[]).findIndex(s=>s.id===p.shipPref):-1;
+  const assignment=plan?.assignments?.find(a=>a.playerId===p.id);
+  const assignmentInfo=assignment?roleFor(assignment.role):null;
+  const rowTeam=assignmentInfo?.team?` ${teamClass(assignmentInfo.team)}`:"";
   let lockText="";
   if(ov?.role||ov?.shipId){
     const lockedShipIndex=ov?.shipId?(activeMission.ships||[]).findIndex(s=>s.id===ov.shipId):-1;
@@ -966,7 +977,8 @@ function responseRow(p){
     else if(ov.role)lockText=`Locked station: ${esc(ov.role)} · either ship`;
     else lockText=`Locked ship: ${esc(lockedShip)}`;
   }
-  return `<div class="response-row"><div class="response-top"><div><div class="response-name">${esc(p.name)}</div><div class="response-meta">${multiShip?`${ship>=0?`Ship: ${esc(displayShip(activeMission.ships[ship],ship))}`:"Ship: no preference"}<br>`:""}${esc(pref)}</div>${lockText?`<div class="fixed-note">${lockText}</div>`:""}</div><div class="actions"><button class="btn ghost tiny" data-edit-player="${p.id}">Edit</button><button class="btn danger tiny" data-delete-player="${p.id}">Delete</button></div></div></div>`;
+  const assignedLine=assignment?`<div class="response-assignment"><span>Current</span><b>${esc(assignment.role)}</b></div>`:"";
+  return `<div class="response-row${rowTeam}"><div class="response-top"><div class="response-copy"><div class="response-name">${esc(p.name)}</div>${multiShip?`<div class="response-meta">${ship>=0?`Preferred ship: ${esc(displayShip(activeMission.ships[ship],ship))}`:"Ship: no preference"}</div>`:""}<div class="preference-chips">${stationPreferenceChips(p.prefs||[])}</div>${lockText?`<div class="fixed-note">${lockText}</div>`:""}</div><div class="response-side">${assignedLine}<div class="actions"><button class="btn ghost tiny" data-edit-player="${p.id}">Edit</button><button class="btn danger tiny" data-delete-player="${p.id}">Delete</button></div></div></div></div>`;
 }
 async function deleteOrganiserPlayer(id){const p=missionPlayers.find(x=>x.id===id);if(!p||!confirm(`Delete ${p.name}'s response?`))return;await runTransaction(db,async tx=>{tx.delete(doc(db,"missions",activeMission.id,"players",id));tx.delete(nameClaimRef(db,activeMission.id,p.name));});if(activeMission.overrides?.[id]){const overrides={...(activeMission.overrides||{})};delete overrides[id];await updateDoc(doc(db,"missions",activeMission.id),{overrides,updatedAt:serverTimestamp()});}}
 function openOrganiserPlayerEditor(player=null){
@@ -1012,7 +1024,8 @@ function adminPlayerAssignmentRows(m){
   return [...players].sort(prioritySort).map(p=>{
     const a=plan?.assignments?.find(x=>x.playerId===p.id),ship=a?(m.ships||[]).find(s=>s.id===a.shipId):null,shipIndex=ship?(m.ships||[]).findIndex(s=>s.id===a.shipId):-1;
     const shipName=a?displayShip(ship,shipIndex):"—",quality=adminQualityText(a),shipPref=p.shipPref?(m.ships||[]).find(s=>s.id===p.shipPref):null,shipPrefIndex=shipPref?(m.ships||[]).findIndex(s=>s.id===p.shipPref):-1;
-    return `<div class="admin-assignment-row"><div><b>${esc(p.name)}</b><span>${a?`${esc(shipName)} · ${esc(a.role)}`:"Not currently assigned"}</span></div><div class="admin-assignment-result ${a?.quality?.kind==="avoid"?"avoid":""}">${esc(quality)}${(m.ships||[]).length>1&&p.shipPref?`<small>${a?.shipMet?"Ship preference met":`Preferred ${esc(displayShip(shipPref,shipPrefIndex))}`}</small>`:""}${a?.forced?`<small>Fixed by organiser</small>`:""}</div></div>`;
+    const assignmentTeam=a?.role?roleFor(a.role)?.team:"";
+    return `<div class="admin-assignment-row${assignmentTeam?` ${teamClass(assignmentTeam)}`:""}"><div><b>${esc(p.name)}</b><span>${a?`${esc(shipName)} · ${esc(a.role)}`:"Not currently assigned"}</span></div><div class="admin-assignment-result ${a?.quality?.kind==="avoid"?"avoid":""}">${esc(quality)}${(m.ships||[]).length>1&&p.shipPref?`<small>${a?.shipMet?"Ship preference met":`Preferred ${esc(displayShip(shipPref,shipPrefIndex))}`}</small>`:""}${a?.forced?`<small>Fixed by organiser</small>`:""}</div></div>`;
   }).join("");
 }
 

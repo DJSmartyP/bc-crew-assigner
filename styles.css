@@ -629,3 +629,36 @@ a{color:inherit}.app-shell{width:min(1580px,100%);margin:auto;padding:14px}.topb
   .admin-role-slot{grid-template-columns:minmax(0,1fr) auto}
   .admin-role-detail{max-width:125px}
 }
+
+/* Player-list colour coding — matches admin station team colours */
+.response-row{
+  --team:var(--cyan);
+  border-left:4px solid color-mix(in srgb,var(--team) 72%,transparent);
+  background:linear-gradient(90deg,color-mix(in srgb,var(--team) 7%,#071727),#071727 58%);
+}
+.response-copy{min-width:0}
+.response-side{display:grid;gap:7px;justify-items:end;align-content:start}
+.response-assignment{display:flex;align-items:baseline;gap:6px;max-width:100%;color:var(--muted);font-size:12px;text-align:right}
+.response-assignment span{font:700 8px "Orbitron";letter-spacing:.08em;text-transform:uppercase;color:var(--team)}
+.response-assignment b{color:#edf5fb;font-size:14px;overflow-wrap:anywhere}
+.preference-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
+.preference-chip{
+  --team:var(--cyan);
+  display:inline-flex;align-items:center;min-height:24px;padding:3px 7px;
+  border:1px solid color-mix(in srgb,var(--team) 38%,#294a61);
+  border-radius:999px;
+  background:color-mix(in srgb,var(--team) 7%,#071727);
+  color:var(--team);
+  font:700 9px "Orbitron";letter-spacing:.035em;
+}
+.preference-chip.neutral{--team:#91a6b8;color:#b8c7d3;background:#0a1b2b}
+.admin-assignment-row{
+  --team:var(--cyan);
+  border-left:4px solid color-mix(in srgb,var(--team) 72%,transparent);
+  background:linear-gradient(90deg,color-mix(in srgb,var(--team) 7%,#071a2b),#071a2b 58%);
+}
+.admin-assignment-row .admin-assignment-result:not(.avoid){color:var(--team)}
+@media(max-width:650px){
+  .response-side{justify-items:start}
+  .response-assignment{text-align:left}
+}
