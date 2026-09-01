@@ -901,9 +901,6 @@ async function generateCrewPdf(){
           ctx.fillStyle=edge;ctx.fillRect(margin+X(2),y,X(.8),rowH-Y(.8));
           drawCanvasText(ctx,role,margin+X(5.2),y+(rowH-Y(.8))/2,{size:29,weight:"700",family:"Rajdhani",colour:roleColour,baseline:"middle"});
           drawCanvasText(ctx,value,W-margin-X(5.2),y+(rowH-Y(.8))/2,{size:30,weight:assignment?"700":"600",family:assignment?"Orbitron":"Rajdhani",colour:valueColour,align:"right",baseline:"middle"});
-          if(forcedInactiveAssignment){
-            drawCanvasText(ctx,"LOCKED OVERRIDE",W-margin-X(5.2),y+Y(7.2),{size:13,weight:"700",family:"Orbitron",colour:"#9D6FDC",align:"right"});
-          }
           y+=rowH;
         }
         y+=groupGap;
