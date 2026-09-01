@@ -662,3 +662,22 @@ a{color:inherit}.app-shell{width:min(1580px,100%);margin:auto;padding:14px}.topb
   .response-side{justify-items:start}
   .response-assignment{text-align:left}
 }
+
+/* FIX: preserve station team colours in admin/player list components.
+   Component defaults above intentionally provide a cyan fallback, but these
+   more-specific selectors must win when a role has a real team class. */
+.admin-role-slot.team-command,
+.response-row.team-command,
+.admin-assignment-row.team-command{--team:var(--command)}
+.admin-role-slot.team-operations,
+.response-row.team-operations,
+.admin-assignment-row.team-operations{--team:var(--operations)}
+.admin-role-slot.team-science,
+.response-row.team-science,
+.admin-assignment-row.team-science{--team:var(--science)}
+.admin-role-slot.team-engineering,
+.response-row.team-engineering,
+.admin-assignment-row.team-engineering{--team:var(--engineering)}
+.admin-role-slot.team-shuttle,
+.response-row.team-shuttle,
+.admin-assignment-row.team-shuttle{--team:var(--shuttle)}
