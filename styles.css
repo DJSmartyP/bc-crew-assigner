@@ -769,3 +769,79 @@ details.response-row .preference-chips{margin-top:5px}
   .response-detail-line>b{text-align:left}
   .player-list-actions{justify-content:flex-start}
 }
+
+
+/* Compact expandable player lists */
+.response-list{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px;
+  align-items:start;
+}
+
+.response-row{
+  padding:0;
+  overflow:hidden;
+  border-left:4px solid rgba(112,221,245,.35);
+}
+
+.response-row.team-command{border-left-color:var(--command)}
+.response-row.team-operations{border-left-color:#ff6b73}
+.response-row.team-science{border-left-color:#5ca8ff}
+.response-row.team-engineering{border-left-color:#f2a760}
+.response-row.team-shuttle{border-left-color:var(--purple)}
+
+.player-list-summary{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto 18px;
+  gap:8px;
+  align-items:center;
+  padding:9px 10px;
+  cursor:pointer;
+  min-height:58px;
+}
+
+.player-list-summary:hover{
+  background:rgba(112,221,245,.04);
+}
+
+.player-list-name{
+  font:700 15px "Orbitron";
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.player-list-current{
+  color:var(--muted);
+  font-size:13px;
+  text-align:right;
+  white-space:nowrap;
+}
+
+.player-list-chevron{
+  width:8px;
+  height:8px;
+  border-right:2px solid var(--cyan);
+  border-bottom:2px solid var(--cyan);
+  transform:rotate(45deg);
+  transition:.15s ease;
+}
+
+.player-list-item[open] .player-list-chevron{
+  transform:rotate(225deg);
+}
+
+.player-list-details{
+  border-top:1px solid rgba(112,221,245,.1);
+  padding:10px;
+  background:rgba(5,15,27,.35);
+}
+
+@media(max-width:900px){
+  .response-list{
+    grid-template-columns:1fr;
+  }
+}
+
