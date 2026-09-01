@@ -1043,29 +1043,6 @@ details.response-row .preference-chips{margin-top:5px}
   border-radius:999px;
 }
 
-/* Verified player selector name fit fix */
-.player-list-summary{
-  min-width:0;
-}
 
-.player-list-name{
-  min-width:0;
-  width:100%;
-  white-space:normal;
-  overflow:visible;
-  text-overflow:clip;
-  overflow-wrap:anywhere;
-  line-height:1.05;
-  font-size:clamp(10px, 1.6vw, 15px);
-  letter-spacing:.03em;
-}
-
-.player-list-summary > *{
-  min-width:0;
-}
-
-.player-list-current{
-  max-width:35%;
-  overflow-wrap:anywhere;
-  white-space:normal;
-}
+/* player-list-name-font-adjust: reduce card name size for longer usernames */
+.player-list-name{font-size:14px;line-height:1.15;}
