@@ -1043,21 +1043,29 @@ details.response-row .preference-chips{margin-top:5px}
   border-radius:999px;
 }
 
+/* Verified player selector name fit fix */
+.player-list-summary{
+  min-width:0;
+}
 
-/* Player name fit fix */
-.response-top{
+.player-list-name{
   min-width:0;
-}
-.response-name{
-  min-width:0;
-  max-width:100%;
-  font-size:clamp(0.95rem, 3vw, 1.35rem);
-  line-height:1.15;
-  overflow-wrap:anywhere;
-  word-break:break-word;
+  width:100%;
   white-space:normal;
+  overflow:visible;
+  text-overflow:clip;
+  overflow-wrap:anywhere;
+  line-height:1.05;
+  font-size:clamp(10px, 1.6vw, 15px);
+  letter-spacing:.03em;
 }
-.response-row,
-.response-row *{
+
+.player-list-summary > *{
   min-width:0;
+}
+
+.player-list-current{
+  max-width:35%;
+  overflow-wrap:anywhere;
+  white-space:normal;
 }
