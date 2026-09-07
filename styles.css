@@ -1058,7 +1058,7 @@ details.response-row .preference-chips{margin-top:5px}
 .admin-summary-card span{font:700 9px "Orbitron";letter-spacing:.1em;text-transform:uppercase;color:var(--cyan)}
 .admin-summary-card b{font:800 clamp(30px,4vw,44px) "Orbitron";line-height:1;color:#f5fbff}
 .admin-summary-card small{align-self:end;color:var(--muted);font-size:14px}
-.admin-command-bar{position:sticky;top:8px;z-index:8;display:flex;justify-content:space-between;gap:14px;align-items:center;margin:0 0 18px;padding:8px;border:1px solid rgba(112,221,245,.18);border-radius:14px;background:rgba(4,17,30,.94);box-shadow:0 10px 30px rgba(0,0,0,.24);backdrop-filter:blur(12px)}
+.admin-command-bar{position:relative;display:flex;justify-content:space-between;gap:14px;align-items:center;margin:0 0 18px;padding:8px;border:1px solid rgba(112,221,245,.18);border-radius:14px;background:rgba(4,17,30,.94);box-shadow:0 6px 18px rgba(0,0,0,.16)}
 .admin-view-switch{display:flex;gap:5px}
 .admin-view-tab{min-height:40px;padding:8px 13px;border:1px solid transparent;border-radius:9px;background:transparent;color:#91a9bd;font:700 10px "Orbitron";letter-spacing:.06em;text-transform:uppercase;cursor:pointer}
 .admin-view-tab span{display:inline-grid;place-items:center;min-width:21px;height:21px;margin-left:5px;padding:0 5px;border-radius:999px;background:#102c45;color:#c9dcea}
@@ -1130,6 +1130,22 @@ details.response-row .preference-chips{margin-top:5px}
 .custom-link-section small{display:block;overflow-wrap:anywhere;color:#bfa8df}
 .custom-link-status{display:flex;gap:8px;align-items:center;margin-top:9px;min-width:0}
 .custom-link-status code{overflow:hidden;text-overflow:ellipsis;color:#cdb9e8;font-size:12px}
+
+/* Administrator ship identity accents */
+.admin-global-ship-roster.ship-takanami{border-color:rgba(255,91,105,.27);background:linear-gradient(180deg,rgba(63,17,28,.45),#061523)}
+.admin-global-ship-roster.ship-takanami .admin-global-ship-head{border-bottom-color:rgba(255,91,105,.2);background:linear-gradient(90deg,rgba(116,25,38,.72),rgba(42,17,29,.36))}
+.admin-global-ship-roster.ship-takanami .admin-global-ship-badge{filter:drop-shadow(0 0 8px rgba(255,91,105,.38))}
+.admin-global-ship-roster.ship-takanami .admin-global-ship-identity span{color:#ff8f9b}
+.admin-global-ship-roster.ship-takanami .admin-global-ship-identity b{color:#ffc1c7}
+.admin-global-ship-roster.ship-havock{border-color:rgba(182,156,255,.27)}
+.admin-global-ship-roster.ship-havock .admin-global-ship-head{border-bottom-color:rgba(182,156,255,.2)}
+.admin-global-ship-roster.ship-havock .admin-global-ship-identity span{color:var(--purple)}
+.admin-global-ship-roster.ship-havock .admin-global-ship-identity b{color:#d8cbff}
+.admin-global-ship-roster.ship-unknown{border-color:rgba(112,221,245,.27);background:linear-gradient(180deg,rgba(14,54,85,.42),#061523)}
+.admin-global-ship-roster.ship-unknown .admin-global-ship-head{border-bottom-color:rgba(112,221,245,.2);background:linear-gradient(90deg,rgba(14,54,85,.72),rgba(7,25,42,.36))}
+.admin-global-ship-roster.ship-unknown .admin-global-ship-badge{filter:drop-shadow(0 0 8px rgba(112,221,245,.38))}
+.admin-global-ship-roster.ship-unknown .admin-global-ship-identity span{color:var(--cyan)}
+.admin-global-ship-roster.ship-unknown .admin-global-ship-identity b{color:#bceefa}
 
 @media(max-width:800px){
   .admin-summary-grid{grid-template-columns:1fr}
