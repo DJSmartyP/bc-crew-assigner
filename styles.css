@@ -1055,6 +1055,7 @@ details.response-row .preference-chips{margin-top:5px}
 .response-editor-header h3 {
   font-size: clamp(1.1rem, 3.5vw, 2.2rem);
 }
+.response-editor-header .response-editor-name{font-size:clamp(20px,2.1vw,30px);line-height:1.08;letter-spacing:.035em;word-break:normal;overflow-wrap:anywhere}
 .response-search{display:grid;gap:6px;margin-top:12px}
 .response-search .label{font:700 9px "Orbitron";letter-spacing:.1em;text-transform:uppercase;color:var(--cyan)}
 .manager-responses-panel{margin-top:14px}
