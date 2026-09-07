@@ -357,6 +357,7 @@ a{color:inherit}.app-shell{width:min(1580px,100%);margin:auto;padding:14px}.topb
   align-items:center;
   gap:8px;
 }
+.admin-global-ship-status{display:flex;align-items:center;justify-content:flex-end;gap:9px;flex:0 0 auto}
 .admin-global-ship-badge{
   width:31px;
   height:31px;
@@ -1052,6 +1053,8 @@ details.response-row .preference-chips{margin-top:5px}
 .response-search{display:grid;gap:6px;margin-top:12px}
 .response-search .label{font:700 9px "Orbitron";letter-spacing:.1em;text-transform:uppercase;color:var(--cyan)}
 .manager-responses-panel{margin-top:14px}
+.manager-responses-panel .response-list{display:flex;flex-direction:column;grid-template-columns:none;width:100%}
+.manager-responses-panel .response-search{width:100%}
 .manager-responses-panel .response-selector{width:100%}
 .manager-responses-panel .selected-response-editor{width:100%}
 .manager-responses-panel .response-editor-card{min-height:0}
