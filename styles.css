@@ -1071,6 +1071,20 @@ details.response-row .preference-chips{margin-top:5px}
 .admin-search input:focus{outline:2px solid var(--gold);outline-offset:2px}
 .admin-view-panel{margin-top:0}
 .admin-global-deployment-row{padding-bottom:2px;border-bottom:1px solid rgba(112,221,245,.08)}
+.admin-deployment-picker{margin-bottom:14px;padding:14px 16px;border-color:rgba(239,199,111,.22);background:linear-gradient(145deg,rgba(18,42,63,.96),rgba(7,23,39,.98))}
+.admin-deployment-picker label{display:grid;grid-template-columns:auto minmax(280px,1fr) auto;align-items:center;gap:12px}
+.admin-deployment-picker label>span{font:700 10px "Orbitron";letter-spacing:.08em;text-transform:uppercase;color:var(--gold)}
+.admin-deployment-picker select{width:100%;min-height:48px;border:1px solid rgba(112,221,245,.25);border-radius:10px;background:#061727;color:var(--text);padding:9px 38px 9px 12px;font:700 17px "Rajdhani";cursor:pointer}
+.admin-deployment-picker select:focus{outline:2px solid var(--gold);outline-offset:2px}
+.admin-deployment-picker small{color:var(--muted);font-size:13px;white-space:nowrap}
+.admin-selected-deployment{align-items:start;border-bottom:0;padding-bottom:0}
+.admin-selected-detail{min-width:0;padding:12px;border:1px solid rgba(112,221,245,.18);border-radius:14px;background:linear-gradient(180deg,rgba(7,27,45,.96),rgba(5,19,32,.98))}
+.admin-selected-detail-head{display:flex;justify-content:space-between;gap:16px;align-items:end;margin:2px 2px 12px}
+.admin-selected-detail-head>div:first-child>span{font:700 9px "Orbitron";letter-spacing:.09em;text-transform:uppercase;color:var(--cyan)}
+.admin-selected-detail-head h3{margin:4px 0 0;font-size:20px}
+.admin-selected-detail-head>.admin-inline-metrics{width:min(620px,70%);margin-top:0}
+.admin-selected-detail>.admin-global-roster{padding:0;border:0;background:transparent;box-shadow:none}
+.admin-selected-detail>.admin-global-players{margin:10px 0 0}
 .admin-roster-disclosure{min-width:0;align-self:stretch;border:1px solid rgba(112,221,245,.16);border-radius:14px;background:linear-gradient(180deg,rgba(7,27,45,.96),rgba(5,19,32,.98));overflow:hidden}
 .admin-roster-disclosure>summary{list-style:none;min-height:100%;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:18px;cursor:pointer}
 .admin-roster-disclosure>summary::-webkit-details-marker{display:none}
@@ -1100,6 +1114,10 @@ details.response-row .preference-chips{margin-top:5px}
   .admin-view-switch{display:grid;grid-template-columns:1fr 1fr}
   .admin-search{grid-template-columns:1fr;justify-content:stretch}
   .admin-search span{display:none}
+  .admin-deployment-picker label{grid-template-columns:1fr}
+  .admin-deployment-picker small{white-space:normal}
+  .admin-selected-detail-head{align-items:stretch;flex-direction:column}
+  .admin-selected-detail-head>.admin-inline-metrics{width:100%}
 }
 @media(max-width:650px){
   .admin-roster-disclosure>summary{align-items:flex-start;flex-direction:column}
