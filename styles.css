@@ -330,6 +330,7 @@ a{color:inherit}.app-shell{width:min(1580px,100%);margin:auto;padding:14px}.topb
   height:100%;
 }
 .admin-global-ship-roster{
+  position:relative;
   min-width:0;
   border:1px solid rgba(112,221,245,.12);
   border-radius:10px;
@@ -358,6 +359,10 @@ a{color:inherit}.app-shell{width:min(1580px,100%);margin:auto;padding:14px}.topb
   gap:8px;
 }
 .admin-global-ship-status{display:flex;align-items:center;justify-content:flex-end;gap:9px;flex:0 0 auto}
+.admin-global-ship-head,.admin-global-ship-roster .admin-role-columns{position:relative;z-index:1}
+.admin-global-ship-watermark{position:absolute;right:12px;bottom:10px;width:clamp(90px,10vw,140px);height:clamp(90px,10vw,140px);object-fit:contain;opacity:.14;pointer-events:none;z-index:2;filter:saturate(1.15) drop-shadow(0 0 14px rgba(112,221,245,.2))}
+.admin-global-ship-roster.ship-takanami .admin-global-ship-watermark{filter:saturate(1.15) drop-shadow(0 0 15px rgba(255,91,105,.28))}
+.admin-global-ship-roster.ship-havock .admin-global-ship-watermark{filter:saturate(1.15) drop-shadow(0 0 15px rgba(182,156,255,.3))}
 .admin-global-ship-badge{
   width:31px;
   height:31px;

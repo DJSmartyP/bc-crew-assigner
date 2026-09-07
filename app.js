@@ -1131,7 +1131,7 @@ function adminGlobalRoleRoster(m){
     }).join("")}</div>`).join("");
     const badge=shipBadgeUrl(ship);
     const assigned=(shipPlan.assignments||[]).length;
-    return `<section class="admin-global-ship-roster ${shipClass(ship)}"><div class="admin-global-ship-head"><div class="admin-global-ship-identity"><div><span>Current assignments</span><b>${esc(displayShip(ship,shipIndex))}</b></div></div><div class="admin-global-ship-status">${badge?`<img src="${esc(badge)}" alt="${esc(displayShip(ship,shipIndex))} logo" class="admin-global-ship-badge">`:""}<span class="pill">${assigned}/14 filled</span></div></div><div class="admin-role-columns">${roleColumns}</div></section>`;
+    return `<section class="admin-global-ship-roster ${shipClass(ship)}"><div class="admin-global-ship-head"><div class="admin-global-ship-identity"><div><span>Current assignments</span><b>${esc(displayShip(ship,shipIndex))}</b></div></div><div class="admin-global-ship-status"><span class="pill">${assigned}/14 filled</span></div></div><div class="admin-role-columns">${roleColumns}</div>${badge?`<img src="${esc(badge)}" alt="" aria-hidden="true" class="admin-global-ship-watermark">`:""}</section>`;
   }).join("");
 
   return `<div class="admin-global-roster"><div class="admin-global-ship-grid">${shipBlocks}</div></div>`;
