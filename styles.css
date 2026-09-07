@@ -1051,6 +1051,10 @@ details.response-row .preference-chips{margin-top:5px}
 }
 .response-search{display:grid;gap:6px;margin-top:12px}
 .response-search .label{font:700 9px "Orbitron";letter-spacing:.1em;text-transform:uppercase;color:var(--cyan)}
+.manager-responses-panel{margin-top:14px}
+.manager-responses-panel .response-selector{width:100%}
+.manager-responses-panel .selected-response-editor{width:100%}
+.manager-responses-panel .response-editor-card{min-height:0}
 .response-editor-header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding-bottom:15px;border-bottom:1px solid rgba(112,221,245,.12)}
 .response-editor-header .pill{flex:0 0 auto}
 .response-editor-details{display:grid;gap:10px;margin-top:14px}
@@ -1140,7 +1144,7 @@ details.response-row .preference-chips{margin-top:5px}
 .custom-link-status code{overflow:hidden;text-overflow:ellipsis;color:#cdb9e8;font-size:12px}
 
 /* Ship identity accents across administrator, organiser and player screens */
-.ship-card.ship-takanami{border-color:rgba(255,91,105,.3);background:linear-gradient(180deg,rgba(58,16,27,.58),#071321)}
+.ship-card.ship-takanami{border-color:rgba(255,91,105,.3)}
 .ship-card.ship-takanami .ship-head{background:linear-gradient(90deg,rgba(118,26,38,.9),rgba(45,18,31,.72))}
 .ship-card.ship-takanami .ship-badge{filter:drop-shadow(0 0 9px rgba(255,91,105,.4))}
 .ship-card.ship-takanami .ship-title{color:#ffc1c7}
@@ -1148,7 +1152,7 @@ details.response-row .preference-chips{margin-top:5px}
 .ship-card.ship-havock{border-color:rgba(182,156,255,.3)}
 .ship-card.ship-havock .ship-title{color:#d8cbff}
 .ship-card.ship-havock .ship-count{border-color:rgba(182,156,255,.36)}
-.ship-card.ship-unknown{border-color:rgba(112,221,245,.3);background:linear-gradient(180deg,rgba(14,54,85,.58),#071321)}
+.ship-card.ship-unknown{border-color:rgba(112,221,245,.3)}
 .ship-card.ship-unknown .ship-head{background:linear-gradient(90deg,rgba(14,74,112,.9),rgba(9,39,65,.72))}
 .ship-card.ship-unknown .ship-title{color:#bceefa}
 .ship-card.ship-unknown .ship-count{border-color:rgba(112,221,245,.36)}
