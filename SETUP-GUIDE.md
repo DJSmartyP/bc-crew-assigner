@@ -87,6 +87,8 @@ Admin URL:
 5. The site should return to **My missions** automatically.
 6. If the link is opened on a different browser/device, the site asks for the same email address again before completing sign-in.
 7. Create a one-ship test mission and copy its player link.
+8. Confirm the link name was generated from the mission name and opens using `?join=your-mission-name`.
+9. Edit the link name, save it, and confirm the previous custom link stops resolving while the new one opens the same mission. A previously copied `?m=DOCUMENT_ID` link should still work.
 
 ## 8. Test the three user levels
 

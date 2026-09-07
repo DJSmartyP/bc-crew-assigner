@@ -1049,3 +1049,60 @@ details.response-row .preference-chips{margin-top:5px}
 .response-editor-header h3 {
   font-size: clamp(1.1rem, 3.5vw, 2.2rem);
 }
+
+/* Administrator control-centre layout */
+.admin-page-head{margin-bottom:16px}
+.admin-summary-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 16px}
+.admin-summary-card{position:relative;overflow:hidden;display:grid;gap:3px;min-height:112px;padding:16px 18px;border:1px solid rgba(112,221,245,.16);border-radius:14px;background:linear-gradient(145deg,rgba(12,39,62,.96),rgba(6,21,36,.98))}
+.admin-summary-card:before{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:linear-gradient(var(--cyan),var(--gold))}
+.admin-summary-card span{font:700 9px "Orbitron";letter-spacing:.1em;text-transform:uppercase;color:var(--cyan)}
+.admin-summary-card b{font:800 clamp(30px,4vw,44px) "Orbitron";line-height:1;color:#f5fbff}
+.admin-summary-card small{align-self:end;color:var(--muted);font-size:14px}
+.admin-command-bar{position:sticky;top:8px;z-index:8;display:flex;justify-content:space-between;gap:14px;align-items:center;margin:0 0 18px;padding:8px;border:1px solid rgba(112,221,245,.18);border-radius:14px;background:rgba(4,17,30,.94);box-shadow:0 10px 30px rgba(0,0,0,.24);backdrop-filter:blur(12px)}
+.admin-view-switch{display:flex;gap:5px}
+.admin-view-tab{min-height:40px;padding:8px 13px;border:1px solid transparent;border-radius:9px;background:transparent;color:#91a9bd;font:700 10px "Orbitron";letter-spacing:.06em;text-transform:uppercase;cursor:pointer}
+.admin-view-tab span{display:inline-grid;place-items:center;min-width:21px;height:21px;margin-left:5px;padding:0 5px;border-radius:999px;background:#102c45;color:#c9dcea}
+.admin-view-tab:hover{background:rgba(112,221,245,.05);color:#dceaf5}
+.admin-view-tab.selected{border-color:rgba(239,199,111,.32);background:linear-gradient(180deg,rgba(239,199,111,.16),rgba(239,199,111,.07));color:var(--gold)}
+.admin-view-tab.selected span{background:rgba(239,199,111,.17);color:#ffe2a0}
+.admin-search{display:grid;grid-template-columns:auto minmax(180px,340px);align-items:center;gap:9px;flex:1;justify-content:end}
+.admin-search span{font:700 9px "Orbitron";letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.admin-search input{width:100%;min-height:40px;border:1px solid rgba(112,221,245,.18);border-radius:9px;background:#061727;color:var(--text);padding:8px 11px;font:600 16px "Rajdhani"}
+.admin-search input:focus{outline:2px solid var(--gold);outline-offset:2px}
+.admin-view-panel{margin-top:0}
+.admin-global-deployment-row{padding-bottom:2px;border-bottom:1px solid rgba(112,221,245,.08)}
+.admin-roster-disclosure{min-width:0;align-self:stretch;border:1px solid rgba(112,221,245,.16);border-radius:14px;background:linear-gradient(180deg,rgba(7,27,45,.96),rgba(5,19,32,.98));overflow:hidden}
+.admin-roster-disclosure>summary{list-style:none;min-height:100%;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:18px;cursor:pointer}
+.admin-roster-disclosure>summary::-webkit-details-marker{display:none}
+.admin-roster-disclosure>summary:hover{background:rgba(112,221,245,.035)}
+.admin-roster-disclosure>summary span:first-child{display:block;margin-bottom:5px;font:700 9px "Orbitron";letter-spacing:.09em;text-transform:uppercase;color:var(--cyan)}
+.admin-roster-disclosure>summary b{font:700 17px "Orbitron";color:var(--text)}
+.admin-roster-summary-copy{min-width:0;flex:1}
+.admin-inline-metrics{display:grid;grid-template-columns:repeat(3,minmax(95px,1fr));gap:7px;margin-top:18px}
+.admin-inline-metrics>div{display:grid;gap:3px;padding:9px 10px;border:1px solid rgba(112,221,245,.11);border-radius:9px;background:rgba(3,17,29,.42)}
+.admin-inline-metrics small{color:var(--muted);font-size:12px}
+.admin-inline-metrics strong{font:700 18px "Orbitron";color:#eef8ff}
+.admin-inline-metrics strong.warn{color:var(--red)}
+.admin-roster-summary-meta{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.admin-roster-disclosure[open]>summary{min-height:0;border-bottom:1px solid rgba(112,221,245,.1)}
+.admin-roster-disclosure[open] .admin-view-hint{color:var(--gold)}
+.admin-roster-disclosure>.admin-global-roster{border:0;border-radius:0;box-shadow:none}
+.pill.custom-link{border-color:rgba(157,111,220,.55);color:#dcc8f9;background:rgba(78,45,118,.25)}
+.custom-link-section{border-color:rgba(157,111,220,.28);background:linear-gradient(180deg,rgba(91,55,130,.11),rgba(6,22,37,.25))}
+.custom-link-section small{display:block;overflow-wrap:anywhere;color:#bfa8df}
+.custom-link-status{display:flex;gap:8px;align-items:center;margin-top:9px;min-width:0}
+.custom-link-status code{overflow:hidden;text-overflow:ellipsis;color:#cdb9e8;font-size:12px}
+
+@media(max-width:800px){
+  .admin-summary-grid{grid-template-columns:1fr}
+  .admin-summary-card{min-height:92px}
+  .admin-command-bar{position:static;align-items:stretch;flex-direction:column}
+  .admin-view-switch{display:grid;grid-template-columns:1fr 1fr}
+  .admin-search{grid-template-columns:1fr;justify-content:stretch}
+  .admin-search span{display:none}
+}
+@media(max-width:650px){
+  .admin-roster-disclosure>summary{align-items:flex-start;flex-direction:column}
+  .admin-roster-summary-meta{justify-content:flex-start}
+  .admin-inline-metrics{grid-template-columns:1fr}
+}

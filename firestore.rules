@@ -31,6 +31,27 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Human-readable player links resolve through a single small lookup document.
+    // Direct deployment-ID links remain supported for existing deployments.
+    match /inviteLinks/{slug} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if isAdmin() || (
+        isOrganiser()
+        && request.resource.data.ownerUid == request.auth.uid
+        && getAfter(/databases/$(database)/documents/missions/$(request.resource.data.missionId)).data.ownerUid == request.auth.uid
+      );
+      allow update: if isAdmin() || (
+        signedIn()
+        && resource.data.ownerUid == request.auth.uid
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.missionId == resource.data.missionId
+      );
+      allow delete: if isAdmin() || (
+        signedIn() && resource.data.ownerUid == request.auth.uid
+      );
+    }
+
     match /missions/{missionId} {
       allow create: if isAdmin() || (
         isOrganiser()

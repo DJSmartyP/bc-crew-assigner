@@ -8,6 +8,12 @@ Reusable multi-mission crew preference and assignment planner for Interstellar-s
 - **Organiser** — passwordless email-link account; creates and manages only their own missions and responses.
 - **Player** — opens a mission invite link, submits preferences without creating an account, and sees the current suggested crew.
 
+## Player links
+
+New deployments generate a readable player link from the mission name, for example `?join=saturday-evening-crew`. Organisers can edit the generated link name before saving. Link names are unique across the planner, use lowercase letters, numbers and hyphens, and are stored in the `inviteLinks` Firestore collection.
+
+Existing `?m=DOCUMENT_ID` links continue to work. Renaming a mission does not silently change an existing custom link, so links that have already been shared remain valid.
+
 ## Standard station template
 
 - **Command:** Captain
