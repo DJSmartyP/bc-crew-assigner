@@ -1049,6 +1049,14 @@ details.response-row .preference-chips{margin-top:5px}
 .response-editor-header h3 {
   font-size: clamp(1.1rem, 3.5vw, 2.2rem);
 }
+.response-search{display:grid;gap:6px;margin-top:12px}
+.response-search .label{font:700 9px "Orbitron";letter-spacing:.1em;text-transform:uppercase;color:var(--cyan)}
+.response-editor-header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding-bottom:15px;border-bottom:1px solid rgba(112,221,245,.12)}
+.response-editor-header .pill{flex:0 0 auto}
+.response-editor-details{display:grid;gap:10px;margin-top:14px}
+.response-editor-details .response-detail-line,.response-editor-details .response-detail-block{padding:10px;border:1px solid rgba(112,221,245,.1);border-radius:9px;background:rgba(4,18,31,.42)}
+.response-editor-actions{margin-top:15px}
+@media(max-width:650px){.response-editor-header{flex-direction:column}.response-editor-card{padding:15px;min-height:0}}
 
 /* Administrator control-centre layout */
 .admin-page-head{margin-bottom:16px}
