@@ -115,6 +115,40 @@ service cloud.firestore {
         allow update: if isAdmin() || ownsMission(missionId) || playerCanUpdateOwn();
         allow delete: if isAdmin() || ownsMission(missionId);
       }
+
+      // One claim per normalised player name prevents duplicate registrations.
+      // Owners need list access so deployment deletion can remove every claim.
+      match /nameClaims/{claimId} {
+        function validClaimShape() {
+          return request.resource.data.keys().hasOnly([
+                   "playerId", "name", "updatedAt"
+                 ])
+                 && request.resource.data.playerId is string
+                 && request.resource.data.name is string
+                 && request.resource.data.updatedAt == request.time;
+        }
+
+        function playerCanCreateOwnClaim() {
+          return signedIn()
+                 && validClaimShape()
+                 && request.resource.data.playerId == request.auth.uid;
+        }
+
+        function playerCanUpdateOwnClaim() {
+          return signedIn()
+                 && validClaimShape()
+                 && resource.data.playerId == request.auth.uid
+                 && request.resource.data.playerId == request.auth.uid;
+        }
+
+        allow get: if signedIn();
+        allow list: if isAdmin() || ownsMission(missionId);
+        allow create: if isAdmin() || ownsMission(missionId) || playerCanCreateOwnClaim();
+        allow update: if isAdmin() || ownsMission(missionId) || playerCanUpdateOwnClaim();
+        allow delete: if isAdmin() || ownsMission(missionId) || (
+          signedIn() && resource.data.playerId == request.auth.uid
+        );
+      }
     }
   }
 }
