@@ -1059,7 +1059,24 @@ function responseRow(p,plan){
   const shipPrefLine=multiShip?`<div class="response-detail-line"><span>Ship preference</span><b>${ship>=0?esc(displayShip(activeMission.ships[ship],ship)):"No preference"}</b></div>`:"";
   return `<details class="player-list-item response-row${rowTeam}"><summary class="player-list-summary"><span class="player-list-name">${esc(p.name)}</span><span class="player-list-current">${currentText}</span><span class="player-list-chevron" aria-hidden="true"></span></summary><div class="player-list-details">${shipPrefLine}<div class="response-detail-block"><span class="response-detail-label">Station preferences</span><div class="preference-chips">${stationPreferenceChips(p.prefs||[])}</div></div>${(p.dislikes||[]).length?`<div class="response-detail-line"><span>Really don't want</span><b>${esc((p.dislikes||[]).join(", "))}</b></div>`:""}${lockText?`<div class="fixed-note">${lockText}</div>`:""}${assignment?`<div class="response-detail-line"><span>Current result</span><b>${esc(assignment.quality?.label||"Assigned")}${assignment.shipMet===false?" · different ship preference":""}</b></div>`:""}<div class="player-list-actions"><button class="btn ghost tiny" data-edit-player="${p.id}">Edit</button><button class="btn danger tiny" data-delete-player="${p.id}">Delete</button></div></div></details>`;
 }
-async function deleteOrganiserPlayer(id){const p=missionPlayers.find(x=>x.id===id);if(!p||!confirm(`Delete ${p.name}'s response?`))return;await runTransaction(db,async tx=>{tx.delete(doc(db,"missions",activeMission.id,"players",id));tx.delete(nameClaimRef(db,activeMission.id,p.name));});if(activeMission.overrides?.[id]){const overrides={...(activeMission.overrides||{})};delete overrides[id];await updateDoc(doc(db,"missions",activeMission.id),{overrides,updatedAt:serverTimestamp()});}}
+async function deleteOrganiserPlayer(id){
+  const p=missionPlayers.find(x=>x.id===id);
+  if(!p||!confirm(`Delete ${p.name}'s response?`))return;
+  await runTransaction(db,async tx=>{
+    tx.delete(doc(db,"missions",activeMission.id,"players",id));
+    tx.delete(nameClaimRef(db,activeMission.id,p.name));
+  });
+  if(activeMission.overrides?.[id]){
+    const overrides={...(activeMission.overrides||{})};
+    delete overrides[id];
+    await updateDoc(doc(db,"missions",activeMission.id),{overrides,updatedAt:serverTimestamp()});
+  }
+  // Refresh immediately after Firestore confirms the deletion rather than
+  // waiting for the realtime snapshot to make the removed record disappear.
+  missionPlayers=missionPlayers.filter(player=>player.id!==id);
+  if(selectedManagerPlayerId===id)selectedManagerPlayerId="";
+  renderManagerState();
+}
 function openOrganiserPlayerEditor(player=null){
   const ov=player?getOverride(activeMission,player.id):null;
   const multiShip=(activeMission.ships||[]).length>1;
