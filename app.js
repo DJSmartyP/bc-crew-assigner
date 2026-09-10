@@ -19,6 +19,10 @@ const SHIP_BADGES = {
   Takanami: "https://cdn.discordapp.com/emojis/1351204968992084038.webp?size=96",
   Havock: "https://cdn.discordapp.com/emojis/1351204847453605970.webp?size=96"
 };
+const LEGACY_ROLE_ALIASES = {
+  "Engineering": "Power Management",
+  "Manual engineer": "Damage Control"
+};
 function shipBadgeUrl(shipOrName){
   const name=typeof shipOrName==="string"?shipOrName:shipOrName?.name;
   return SHIP_BADGES[name]||"";
@@ -34,7 +38,7 @@ const TEAMS = [
   {id:"command",name:"Command",roles:["Captain"]},
   {id:"operations",name:"Operations",roles:["Helm","Beams","Missiles"]},
   {id:"science",name:"Science",roles:["Nav","Radar","Comms"]},
-  {id:"engineering",name:"Engineering",roles:["Engineering","Manual engineer","Dock and drone"]},
+  {id:"engineering",name:"Engineering",roles:["Power Management","Damage Control","Dock and drone"]},
   {id:"shuttle",name:"Shuttle",roles:["XO","Shuttle helm","Shuttle generalist","Shuttle engineer"]}
 ];
 const ROLES = TEAMS.flatMap(t=>t.roles.map(name=>({name,team:t.id,teamName:t.name})));
@@ -66,6 +70,25 @@ function dateText(v){if(!v)return "Date not set";const [y,m,d]=String(v).split("
 function timestampMs(value){if(!value)return Number.MAX_SAFE_INTEGER;if(typeof value.toMillis==="function")return value.toMillis();if(Number.isFinite(value.seconds))return value.seconds*1000+(value.nanoseconds||0)/1e6;const n=Date.parse(value);return Number.isFinite(n)?n:Number.MAX_SAFE_INTEGER;}
 function prioritySort(a,b){return timestampMs(a.priorityAt||a.createdAt)-timestampMs(b.priorityAt||b.createdAt)||String(a.id).localeCompare(String(b.id));}
 function normalizeName(s){return String(s||"").normalize("NFKC").trim().toLocaleLowerCase().replace(/\s+/g," ");}
+function canonicalRoleName(value){
+  const role=String(value||"");
+  const legacy=Object.entries(LEGACY_ROLE_ALIASES).find(([oldName])=>oldName.toLocaleLowerCase()===role.toLocaleLowerCase());
+  return legacy?legacy[1]:role;
+}
+function normalizePlayerRecord(player){
+  return{...player,prefs:(player?.prefs||[]).map(canonicalRoleName),dislikes:(player?.dislikes||[]).map(canonicalRoleName)};
+}
+function normalizeMissionRecord(mission){
+  const overrides={};
+  for(const [playerId,value] of Object.entries(mission?.overrides||{}))overrides[playerId]={...value,role:canonicalRoleName(value?.role)};
+  const stationLocks={};
+  for(const [key,value] of Object.entries(mission?.stationLocks||{})){
+    const split=key.lastIndexOf("::");
+    const normalizedKey=split<0?key:`${key.slice(0,split)}::${canonicalRoleName(key.slice(split+2))}`;
+    stationLocks[normalizedKey]=value;
+  }
+  return{...mission,overrides,stationLocks};
+}
 function normalizeInviteSlug(value){return String(value||"").normalize("NFKD").replace(/\p{M}+/gu,"").toLowerCase().trim().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"").slice(0,48);}
 function inviteSlugError(value){if(!value)return"";if(value.length<4)return"Use at least 4 letters or numbers for the custom player link.";if(value.length>48)return"Keep the custom player link to 48 characters or fewer.";if(!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value))return"Use lowercase letters, numbers and single hyphens only.";return"";}
 function inviteLinkRef(dbInstance,slug){return doc(dbInstance,"inviteLinks",slug);}
@@ -79,7 +102,7 @@ function clearUnsubs(){missionUnsubs.forEach(fn=>{try{fn();}catch{}});missionUns
 const SHUTTLE_FALLBACKS = {
   "XO": ["Captain"],
   "Shuttle helm": ["Helm"],
-  "Shuttle engineer": ["Engineering"],
+  "Shuttle engineer": ["Power Management"],
   "Shuttle generalist": ["Beams","Missiles"]
 };
 function shuttleActiveForCount(count){return Number(count)>=11;}
@@ -92,7 +115,7 @@ function fallbackPreferenceLabel(pref,role){
   if(pref==="Shuttle generalist"&&(role==="Beams"||role==="Missiles"))return "Shuttle generalist → weapons";
   if(pref==="XO"&&role==="Captain")return "XO → Captain";
   if(pref==="Shuttle helm"&&role==="Helm")return "Shuttle helm → Helm";
-  if(pref==="Shuttle engineer"&&role==="Engineering")return "Shuttle engineer → Engineering";
+  if(pref==="Shuttle engineer"&&role==="Power Management")return "Shuttle engineer → Power Management";
   return "";
 }
 function quality(person,role,shuttleActive=true){
@@ -132,11 +155,13 @@ function stableTie(id,ship,role){
   return ((h>>>0)%997)*1e-12;
 }
 function getOverride(mission,playerId){return mission?.overrides?.[playerId]||null;}
-function stationLockKey(shipId,role){return `${shipId}::${role}`;}
+function stationLockKey(shipId,role){return `${shipId}::${canonicalRoleName(role)}`;}
 function getStationLock(mission,shipId,role){
   const locks=mission?.stationLocks;
-  const key=stationLockKey(shipId,role);
-  if(!locks||!Object.prototype.hasOwnProperty.call(locks,key))return null;
+  const canonical=canonicalRoleName(role);
+  const roleNames=[canonical,...Object.entries(LEGACY_ROLE_ALIASES).filter(([,current])=>current===canonical).map(([legacy])=>legacy)];
+  const key=roleNames.map(name=>`${shipId}::${name}`).find(candidate=>locks&&Object.prototype.hasOwnProperty.call(locks,candidate));
+  if(!key)return null;
   const value=locks[key];
   if(value===false||value==null)return null;
   return{message:typeof value==="string"?value:String(value?.message||"")};
@@ -480,7 +505,7 @@ function renderPlan(plan,mission,{organiser=false,ownId=""}={}){
   const shuttleRule=balancedTwo
     ?`<b>Balanced two-ship deployment.</b> Shuttle stations stay inactive through response 20. As soon as response 21 exists, the entire crew is recalculated and Shuttle can be used on the ship that takes the 11th crew member.`
     :`<b>Shuttle activates when a ship reaches 11 crew.</b>`;
-  const fallbackNote=hasInactiveShuttle?`<div class="shuttle-fallback-note">${shuttleRule} Any station locked by the organiser remains unavailable. Until Shuttle activates, Shuttle choices are remembered and count toward equivalent main-ship roles: XO → Captain, Shuttle helm → Helm, Shuttle engineer → Engineering, Shuttle generalist → Beams or Missiles.</div>`:"";
+  const fallbackNote=hasInactiveShuttle?`<div class="shuttle-fallback-note">${shuttleRule} Any station locked by the organiser remains unavailable. Until Shuttle activates, Shuttle choices are remembered and count toward equivalent main-ship roles: XO → Captain, Shuttle helm → Helm, Shuttle engineer → Power Management, Shuttle generalist → Beams or Missiles.</div>`:"";
   const lockNote=stationLockCount(mission)?`<div class="station-lock-notice"><b>${stationLockCount(mission)} station${stationLockCount(mission)===1?"":"s"} locked.</b> Locked stations are excluded from the suggested crew until an organiser or administrator unlocks them.</div>`:"";
   return `<div class="team-key">${chips}</div>${lockNote}${fallbackNote}<div class="crew-grid">${ships}</div>`;
 }
@@ -584,7 +609,7 @@ async function ensureOrganiserProfileAndRender(){
   await setDoc(ref,{name:currentUser.displayName||fallback,email:currentUser.email||"",role:"organiser",blocked:false,authProvider:"google.com",createdAt:serverTimestamp(),updatedAt:serverTimestamp()});
   await renderOrganiserDashboard();
 }
-async function renderOrganiserDashboard(){clearUnsubs();const q=query(collection(db,"missions"),where("ownerUid","==",currentUser.uid));const snap=await getDocs(q);const missions=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>String(a.date||"").localeCompare(String(b.date||"")));main.innerHTML=`<div class="page-head"><div><div class="eyebrow">Organiser dashboard</div><h1>My deployments</h1><p class="sub">Create a deployment, share its player link, then manage the crew as preferences arrive.</p></div><button id="createMissionBtn" class="btn primary">Create deployment</button></div><div id="missionCards" class="grid cards">${missions.length?missions.map(m=>missionCard(m,false)).join(""):`<section class="empty-state"><h2>No deployments yet</h2><p>Create your first deployment to get a player preference link.</p></section>`}</div>`;$("#createMissionBtn").onclick=()=>openMissionSetup();document.querySelectorAll("[data-manage]").forEach(b=>b.onclick=()=>openMissionManager(b.dataset.manage));document.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>copyMissionLink(b.dataset.copy,b,b.dataset.inviteSlug||""));document.querySelectorAll("[data-delete-mission]").forEach(b=>{b.onclick=async()=>{if(confirm("Delete this deployment and all player responses? This cannot be undone."))await deleteMissionFromDashboard(b.dataset.deleteMission);};});}
+async function renderOrganiserDashboard(){clearUnsubs();const q=query(collection(db,"missions"),where("ownerUid","==",currentUser.uid));const snap=await getDocs(q);const missions=snap.docs.map(d=>normalizeMissionRecord({id:d.id,...d.data()})).sort((a,b)=>String(a.date||"").localeCompare(String(b.date||"")));main.innerHTML=`<div class="page-head"><div><div class="eyebrow">Organiser dashboard</div><h1>My deployments</h1><p class="sub">Create a deployment, share its player link, then manage the crew as preferences arrive.</p></div><button id="createMissionBtn" class="btn primary">Create deployment</button></div><div id="missionCards" class="grid cards">${missions.length?missions.map(m=>missionCard(m,false)).join(""):`<section class="empty-state"><h2>No deployments yet</h2><p>Create your first deployment to get a player preference link.</p></section>`}</div>`;$("#createMissionBtn").onclick=()=>openMissionSetup();document.querySelectorAll("[data-manage]").forEach(b=>b.onclick=()=>openMissionManager(b.dataset.manage));document.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>copyMissionLink(b.dataset.copy,b,b.dataset.inviteSlug||""));document.querySelectorAll("[data-delete-mission]").forEach(b=>{b.onclick=async()=>{if(confirm("Delete this deployment and all player responses? This cannot be undone."))await deleteMissionFromDashboard(b.dataset.deleteMission);};});}
 function missionCard(m,admin){
   const canDelete=admin||m.ownerUid===currentUser?.uid,locked=stationLockCount(m);
   return `<section class="panel mission-card" data-admin-search="${esc(`${missionTitle(m)} ${m.ownerName||""} ${m.ownerEmail||""} ${deploymentShipSummary(m)} ${m.inviteSlug||""}`.toLowerCase())}"><div class="mission-date">${esc(dateText(m.date))}</div><h2>${esc(missionTitle(m))}</h2><p class="sub">${esc(deploymentShipSummary(m))}${Number.isFinite(m.responseCount)?` · ${m.responseCount} response${m.responseCount===1?"":"s"}`:""}</p><div class="mission-meta"><span class="pill ${m.closed?"closed":"open"}">${m.closed?"Choices closed":"Choices open"}</span>${admin?`<span class="pill organiser">${esc(m.ownerName||"Organiser")}</span>`:""}${m.inviteSlug?`<span class="pill custom-link">Custom link</span>`:""}${locked?`<span class="pill station-lock-pill">${locked} station${locked===1?"":"s"} locked</span>`:""}</div><div class="share-box"><input readonly value="${esc(buildMissionLink(m.id,m.inviteSlug))}" aria-label="Player link"><button class="btn ghost tiny" data-copy="${m.id}" data-invite-slug="${esc(m.inviteSlug||"")}">Copy link</button></div><div class="actions"><button class="btn primary" data-manage="${m.id}">Manage crew</button>${admin?`<button class="btn ghost" data-transfer-mission="${m.id}">Change organiser</button>`:""}${canDelete?`<button class="btn danger" data-delete-mission="${m.id}">Delete</button>`:""}</div></section>`;
@@ -703,7 +728,7 @@ function openOwnerTransfer(mission){
 function showModal(content){document.body.insertAdjacentHTML("beforeend",`<div id="modalBackdrop" class="modal-backdrop"><div class="modal">${content}</div></div>`);$("#modalBackdrop").addEventListener("click",e=>{if(e.target.id==="modalBackdrop"||e.target.closest("[data-close]"))closeModal();});}
 function closeModal(){$("#modalBackdrop")?.remove();}
 
-async function openMissionManager(id){clearUnsubs();selectedManagerPlayerId="";const ref=doc(db,"missions",id),snap=await getDoc(ref);if(!snap.exists()){alert("Deployment not found.");return;}const mission={id:snap.id,...snap.data()};if(currentRole!=="admin"&&mission.ownerUid!==currentUser.uid){alert("You don't have access to manage this deployment.");return;}activeMission=mission;renderManagerShell();const playerRef=collection(db,"missions",id,"players");missionUnsubs.push(onSnapshot(ref,s=>{if(!s.exists())return;activeMission={id:s.id,...s.data()};renderManagerState();}));missionUnsubs.push(onSnapshot(playerRef,s=>{missionPlayers=s.docs.map(d=>({id:d.id,...d.data()}));renderManagerState();}));}
+async function openMissionManager(id){clearUnsubs();selectedManagerPlayerId="";const ref=doc(db,"missions",id),snap=await getDoc(ref);if(!snap.exists()){alert("Deployment not found.");return;}const mission=normalizeMissionRecord({id:snap.id,...snap.data()});if(currentRole!=="admin"&&mission.ownerUid!==currentUser.uid){alert("You don't have access to manage this deployment.");return;}activeMission=mission;renderManagerShell();const playerRef=collection(db,"missions",id,"players");missionUnsubs.push(onSnapshot(ref,s=>{if(!s.exists())return;activeMission=normalizeMissionRecord({id:s.id,...s.data()});renderManagerState();}));missionUnsubs.push(onSnapshot(playerRef,s=>{missionPlayers=s.docs.map(d=>normalizePlayerRecord({id:d.id,...d.data()}));renderManagerState();}));}
 
 function safeFilenamePart(value){
   return String(value||"")
@@ -1259,8 +1284,8 @@ async function renderAdminDashboard(){
   clearUnsubs();
   const [missionSnap,profileSnap]=await Promise.all([getDocs(collection(db,"missions")),getDocs(collection(db,"profiles"))]);
   const profiles=profileSnap.docs.map(d=>({id:d.id,...d.data()})).filter(p=>p.role==="organiser").sort((a,b)=>String(a.email||a.name||"").localeCompare(String(b.email||b.name||"")));
-  let missions=missionSnap.docs.map(d=>({id:d.id,...d.data()}));
-  const missionData=await Promise.all(missions.map(async m=>{try{const ps=await getDocs(collection(db,"missions",m.id,"players")),players=ps.docs.map(d=>({id:d.id,...d.data()})),plan=computePlan(players,m);return[m.id,{players,plan}];}catch{return[m.id,{players:[],plan:null}];}}));
+  let missions=missionSnap.docs.map(d=>normalizeMissionRecord({id:d.id,...d.data()}));
+  const missionData=await Promise.all(missions.map(async m=>{try{const ps=await getDocs(collection(db,"missions",m.id,"players")),players=ps.docs.map(d=>normalizePlayerRecord({id:d.id,...d.data()})),plan=computePlan(players,m);return[m.id,{players,plan}];}catch{return[m.id,{players:[],plan:null}];}}));
   const dataMap=new Map(missionData),profileMap=new Map(profiles.map(p=>[p.id,p]));
   missions=missions.map(m=>{const data=dataMap.get(m.id)||{players:[],plan:null};return{...m,ownerName:m.ownerUid===ADMIN_UID?"Administrator":(profileMap.get(m.ownerUid)?.name||m.ownerName||"Organiser"),ownerEmail:profileMap.get(m.ownerUid)?.email||"",responseCount:data.players.length,adminPlayers:data.players,adminPlan:data.plan};}).sort((a,b)=>String(a.date||"").localeCompare(String(b.date||"")));
   const activeProfiles=profiles.filter(p=>p.blocked!==true),blockedProfiles=profiles.filter(p=>p.blocked===true);
@@ -1328,7 +1353,7 @@ async function bootPlayerInvite(rawSlug){
   }catch(ex){renderPlayerError(ex.message||"Could not open this custom player link.");}
 }
 async function bootPlayer(missionId,existingViewerContext=null){
-  try{viewerContext=existingViewerContext||await namedAnonymousContext(`viewer_${missionId.replace(/[^a-z0-9]/gi,"_")}`);const mSnap=await getDoc(doc(viewerContext.db,"missions",missionId));if(!mSnap.exists()){renderPlayerError("That deployment link doesn't exist.");return;}activeMission={id:mSnap.id,...mSnap.data()};renderPlayerShell();missionUnsubs.push(onSnapshot(doc(viewerContext.db,"missions",missionId),s=>{if(!s.exists())return;activeMission={id:s.id,...s.data()};renderPlayerState();}));missionUnsubs.push(onSnapshot(collection(viewerContext.db,"missions",missionId,"players"),s=>{missionPlayers=s.docs.map(d=>({id:d.id,...d.data()}));renderPlayerState();resolveSavedPlayer(false);}));
+  try{viewerContext=existingViewerContext||await namedAnonymousContext(`viewer_${missionId.replace(/[^a-z0-9]/gi,"_")}`);const mSnap=await getDoc(doc(viewerContext.db,"missions",missionId));if(!mSnap.exists()){renderPlayerError("That deployment link doesn't exist.");return;}activeMission=normalizeMissionRecord({id:mSnap.id,...mSnap.data()});renderPlayerShell();missionUnsubs.push(onSnapshot(doc(viewerContext.db,"missions",missionId),s=>{if(!s.exists())return;activeMission=normalizeMissionRecord({id:s.id,...s.data()});renderPlayerState();}));missionUnsubs.push(onSnapshot(collection(viewerContext.db,"missions",missionId,"players"),s=>{missionPlayers=s.docs.map(d=>normalizePlayerRecord({id:d.id,...d.data()}));renderPlayerState();resolveSavedPlayer(false);}));
   }catch(ex){renderPlayerError(ex.message||"Could not open this deployment.");}
 }
 function renderPlayerError(text){topActions.innerHTML="";main.innerHTML=`<section class="empty-state"><h2>Couldn't open the deployment</h2><p>${esc(text)}</p></section>`;}

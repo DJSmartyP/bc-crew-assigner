@@ -14,7 +14,7 @@ Stations:
 Shuttle preference fallback while shuttle is inactive:
 - XO -> Captain
 - Shuttle helm -> Helm
-- Shuttle engineer -> Engineering
+- Shuttle engineer -> Power Management
 - Shuttle generalist -> Beams or Missiles
 
 Players' original preferences are stored unchanged.

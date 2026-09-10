@@ -19,7 +19,7 @@ Existing `?m=DOCUMENT_ID` links continue to work. Renaming a mission does not si
 - **Command:** Captain
 - **Operations:** Helm, Beams, Missiles
 - **Science:** Nav, Radar, Comms
-- **Engineering:** Engineering, Manual engineer, Dock and drone
+- **Engineering:** Power Management, Damage Control, Dock and drone
 - **Shuttle:** XO, Shuttle helm, Shuttle generalist, Shuttle engineer
 
 ## Staffing rules per ship

@@ -9,7 +9,7 @@ Behaviour:
 - While shuttle is inactive:
   XO -> Captain
   Shuttle helm -> Helm
-  Shuttle engineer -> Engineering
+  Shuttle engineer -> Power Management
   Shuttle generalist -> Beams or Missiles
   These equivalents are used by the assignment planner without rewriting the player's saved choices.
 - Organiser/Admin fixed assignments can still activate an otherwise inactive station.

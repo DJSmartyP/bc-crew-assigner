@@ -16,7 +16,10 @@ globalThis.stationLockApi = {
   isStationLocked,
   stationLockCount,
   unlockedStationCapacity,
-  rolesForShipCount
+  rolesForShipCount,
+  canonicalRoleName,
+  normalizePlayerRecord,
+  normalizeMissionRecord
 };`;
 
 const context = {
@@ -102,4 +105,18 @@ test("a lock can create a temporary waiting place without blanking the plan", ()
   assert.equal(plan.assignments.length, 9);
   assert.equal(plan.overflow, 1);
   assert.equal(plan.error, undefined);
+});
+
+test("legacy engineering names load with the new station terminology", () => {
+  const legacyPlayer = api.normalizePlayerRecord(player("Taylor", ["Engineering", "Manual engineer", "Nav"]));
+  const legacyMission = api.normalizeMissionRecord(oneShip(
+    { "ship_1::Manual engineer": "Corridor team" },
+    { Taylor: { role: "Engineering", shipId: "ship_1" } }
+  ));
+
+  assert.equal(api.canonicalRoleName("Engineering"), "Power Management");
+  assert.equal(api.canonicalRoleName("Manual Engineer"), "Damage Control");
+  assert.deepEqual(Array.from(legacyPlayer.prefs), ["Power Management", "Damage Control", "Nav"]);
+  assert.equal(legacyMission.overrides.Taylor.role, "Power Management");
+  assert.equal(api.getStationLock(legacyMission, "ship_1", "Damage Control").message, "Corridor team");
 });
