@@ -35,6 +35,12 @@ The suggested crew is recalculated from the complete current preference set when
 
 Station preference is prioritised ahead of ship preference. Matching role choices are spread across ships where possible. When two otherwise equivalent claims remain, the earlier preference time wins.
 
+## Unavailable station locks
+
+Organisers and administrators can mark an individual station on a specific ship as unavailable while creating or editing a deployment. Each lock can include an optional name or short message, such as `Console offline` or `Reserved for GM`.
+
+Locked stations remain visible in the live crew plan and PDF, but are excluded from automatic and fixed assignments until an organiser or administrator unlocks them. A lock on one ship does not close the matching station on another ship.
+
 ## Authentication
 
 - Admin: Firebase Email/Password.

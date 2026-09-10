@@ -1190,6 +1190,34 @@ details.response-row .preference-chips{margin-top:5px}
 .admin-global-ship-roster.ship-unknown .admin-global-ship-identity span{color:var(--cyan)}
 .admin-global-ship-roster.ship-unknown .admin-global-ship-identity b{color:#bceefa}
 
+/* Mission-level unavailable station locks */
+.station-lock-pill{border-color:rgba(255,143,155,.55);color:#ffd1d6;background:rgba(120,35,51,.22)}
+.station-lock-editor{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:11px}
+.station-lock-ship{border:1px solid rgba(112,221,245,.15);border-radius:11px;background:#061625;overflow:hidden}
+.station-lock-ship-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 11px;background:linear-gradient(90deg,#103653,#0a2237)}
+.station-lock-ship.ship-havock .station-lock-ship-head{background:linear-gradient(90deg,#322958,#171f3e)}
+.station-lock-ship-head b{font:700 12px "Orbitron";letter-spacing:.07em;text-transform:uppercase;color:var(--gold)}
+.station-lock-ship-head span{font:700 8px "Orbitron";letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.station-lock-team{border-top:1px solid rgba(255,255,255,.045)}
+.station-lock-team-name{padding:7px 9px 4px;font:700 8px "Orbitron";letter-spacing:.13em;text-transform:uppercase;color:var(--team)}
+.station-lock-row{display:grid;grid-template-columns:minmax(120px,.8fr) minmax(150px,1.2fr);gap:8px;align-items:center;padding:6px 9px;border-top:1px solid rgba(255,255,255,.035)}
+.station-lock-row label{display:flex;align-items:center;gap:7px;min-width:0;font-size:15px;font-weight:600;cursor:pointer}
+.station-lock-row label span{overflow-wrap:anywhere}
+.station-lock-row input[type="checkbox"]{width:17px;height:17px;accent-color:var(--red);flex:0 0 auto}
+.station-lock-row input[type="text"]{width:100%;min-height:34px;border:1px solid rgba(112,221,245,.15);border-radius:7px;background:#071a2b;color:var(--text);padding:5px 8px;font:600 14px "Rajdhani"}
+.station-lock-row input[type="text"]:disabled{opacity:.38}
+.station-lock-row.locked{background:rgba(121,34,49,.19)}
+.station-lock-row.locked label{color:#ffd0d6}
+.station-lock-row.locked input[type="text"]{border-color:rgba(255,143,155,.38);background:#25131c}
+.station.locked{opacity:1;filter:saturate(.55);border-left-color:var(--red);background:linear-gradient(90deg,rgba(116,30,46,.28),rgba(49,18,29,.08) 70%)}
+.station.locked .station-role,.station.locked .station-state{color:#ffadb6}
+.station.locked .station-name{color:#ffd2d7;font-size:15px;font-style:normal;font-weight:600}
+.station-lock-note{margin:0 0 11px;padding:8px 10px;border:1px solid rgba(255,143,155,.22);border-radius:10px;background:rgba(121,34,49,.09);color:#c8d3de;font-size:13px;line-height:1.4}
+.station-lock-note b{color:#ffb8c0}
+.admin-role-slot.station-locked{opacity:1;border-color:rgba(255,143,155,.34);background:rgba(108,31,45,.26)}
+.admin-role-slot.station-locked .admin-role-name,.admin-role-slot.station-locked b,.admin-role-slot.station-locked .admin-role-detail{color:#ffc1c8}
+@media(max-width:650px){.station-lock-editor{grid-template-columns:1fr}.station-lock-row{grid-template-columns:1fr}.station-lock-row input[type="text"]{margin-left:24px;width:calc(100% - 24px)}}
+
 @media(max-width:800px){
   .admin-summary-grid{grid-template-columns:1fr}
   .admin-summary-card{min-height:92px}
