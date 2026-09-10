@@ -64,6 +64,8 @@ test("a locked station is removed from assignment and keeps its message", () => 
   const html = api.renderPlan(plan, mission);
   assert.match(html, />Locked</);
   assert.match(html, /Console offline/);
+  assert.ok(html.indexOf(">Captain</span>") < html.indexOf(">Helm</span>"));
+  assert.ok(html.indexOf(">Helm</span>") < html.indexOf(">Beams</span>"));
 });
 
 test("a station can be locked on one ship and remain usable on the other", () => {

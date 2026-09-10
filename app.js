@@ -686,7 +686,7 @@ async function openMissionSetup(existing=null){
   }
   function drawStationLocks(){
     const ships=configuredShips();
-    lockEditor.innerHTML=ships.map((ship,shipIndex)=>`<section class="station-lock-ship ${shipClass(ship)}"><div class="station-lock-ship-head"><b>${esc(displayShip(ship,shipIndex))}</b><span>${ROLE_NAMES.filter(role=>Object.prototype.hasOwnProperty.call(stationLocks,stationLockKey(ship.id,role))).length} locked</span></div>${TEAMS.map(team=>`<div class="station-lock-team"><div class="station-lock-team-name ${teamClass(team.id)}">${esc(team.name)}</div>${team.roles.map(role=>{const key=stationLockKey(ship.id,role),locked=Object.prototype.hasOwnProperty.call(stationLocks,key),message=stationLocks[key]||"",shipName=displayShip(ship,shipIndex);return `<div class="station-lock-row${locked?" locked":""}"><label><input type="checkbox" data-station-lock="${esc(key)}" aria-label="Lock ${esc(role)} on ${esc(shipName)}"${locked?" checked":""}><span>${esc(role)}</span></label><input type="text" data-station-lock-message maxlength="80" value="${esc(message)}" aria-label="Lock message for ${esc(role)} on ${esc(shipName)}" placeholder="Optional name or message"${locked?"":" disabled"}></div>`;}).join("")}</div>`).join("")}</section>`).join("");
+    lockEditor.innerHTML=ships.map((ship,shipIndex)=>`<section class="station-lock-ship ${shipClass(ship)}"><div class="station-lock-ship-head"><b>${esc(displayShip(ship,shipIndex))}</b><span>${ROLE_NAMES.filter(role=>Object.prototype.hasOwnProperty.call(stationLocks,stationLockKey(ship.id,role))).length} locked</span></div>${TEAMS.map(team=>`<div class="station-lock-team ${teamClass(team.id)}"><div class="station-lock-team-name">${esc(team.name)}</div>${team.roles.map(role=>{const key=stationLockKey(ship.id,role),locked=Object.prototype.hasOwnProperty.call(stationLocks,key),message=stationLocks[key]||"",shipName=displayShip(ship,shipIndex);return `<div class="station-lock-row${locked?" locked":""}"><label><input type="checkbox" data-station-lock="${esc(key)}" aria-label="Lock ${esc(role)} on ${esc(shipName)}"${locked?" checked":""}><span>${esc(role)}</span></label><input type="text" data-station-lock-message maxlength="80" value="${esc(message)}" aria-label="Lock message for ${esc(role)} on ${esc(shipName)}" placeholder="Optional name or message"${locked?"":" disabled"}></div>`;}).join("")}</div>`).join("")}</section>`).join("");
     lockEditor.querySelectorAll("[data-station-lock]").forEach(box=>box.onchange=()=>{const row=box.closest(".station-lock-row"),message=row.querySelector("[data-station-lock-message]");row.classList.toggle("locked",box.checked);message.disabled=!box.checked;if(box.checked){stationLocks[box.dataset.stationLock]=message.value.trim();message.focus();}else delete stationLocks[box.dataset.stationLock];updateStationLockCount();});
     lockEditor.querySelectorAll("[data-station-lock-message]").forEach(input=>input.oninput=()=>{const box=input.closest(".station-lock-row").querySelector("[data-station-lock]");if(box.checked)stationLocks[box.dataset.stationLock]=input.value.slice(0,80);});
     updateStationLockCount();
@@ -1046,11 +1046,11 @@ async function generateCrewPdf(){
           const lockedRow=Boolean(stationLock);
           const forcedInactiveAssignment=team.id==="shuttle"&&!shuttleNormallyAvailable&&Boolean(assignment);
           const inactiveRow=!lockedRow&&team.id==="shuttle"&&!shuttleNormallyAvailable&&!assignment;
-          const rowFill=lockedRow?"#F4E3E5":inactiveRow?"#E4E9ED":forcedInactiveAssignment?"#F4EEFC":"#F9FBFC";
-          const edge=lockedRow?"#A64555":inactiveRow?"#B6C0C8":forcedInactiveAssignment?"#9D6FDC":palette.fill;
-          const roleColour=lockedRow?"#79313D":inactiveRow?"#7E8A94":"#1B2B38";
-          const valueColour=lockedRow?"#8C3544":inactiveRow?"#8B969F":forcedInactiveAssignment?"#593B86":"#071727";
-          const value=assignment?.name||(lockedRow?(stationLock.message||"LOCKED — UNAVAILABLE"):inactiveRow?"NOT IN USE":"To be decided");
+          const rowFill=inactiveRow?"#E4E9ED":forcedInactiveAssignment?"#F4EEFC":"#F9FBFC";
+          const edge=inactiveRow?"#B6C0C8":forcedInactiveAssignment?"#9D6FDC":palette.fill;
+          const roleColour=lockedRow?palette.text:inactiveRow?"#7E8A94":"#1B2B38";
+          const valueColour=lockedRow?palette.text:inactiveRow?"#8B969F":forcedInactiveAssignment?"#593B86":"#071727";
+          const value=assignment?.name||(lockedRow?`LOCKED · ${stationLock.message||"UNAVAILABLE"}`:inactiveRow?"NOT IN USE":"To be decided");
 
           fillRoundRect(ctx,margin+X(2),y,blockW-X(4),rowH-Y(.8),X(.9),rowFill,"#D3DEE6",1.5);
           ctx.fillStyle=edge;ctx.fillRect(margin+X(2),y,X(.8),rowH-Y(.8));
