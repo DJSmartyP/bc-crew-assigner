@@ -49,6 +49,16 @@ Locked stations remain visible in the live crew plan and PDF, but are excluded f
 
 See `SETUP-GUIDE.md` for setup and publishing instructions.
 
+## Shared Firebase rules
+
+This app and the UFN Crew Tool use the same Firebase project. The checked-in
+`firestore.rules` file is therefore a combined ruleset for both applications.
+Always publish the complete file; deploying an IDP-only or UFN-only rules file
+will remove the other application's permissions.
+
+Run `node --test shared-firestore-rules.test.cjs` before publishing rules. The
+test guards the collection boundaries required by both apps.
+
 
 ## Sign-in
 

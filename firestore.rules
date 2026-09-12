@@ -16,6 +16,17 @@ service cloud.firestore {
     function ownsMission(missionId) {
       return signedIn() && get(/databases/$(database)/documents/missions/$(missionId)).data.ownerUid == request.auth.uid;
     }
+    function isCampaignCrewAuth(crewSlug) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/ufnCampaignCrews/$(crewSlug))
+        && get(/databases/$(database)/documents/ufnCampaignCrews/$(crewSlug)).data.active == true
+        && get(/databases/$(database)/documents/ufnCampaignCrews/$(crewSlug)).data.authUid == request.auth.uid;
+    }
+    function campaignOwnsUfnDeployment(deploymentId) {
+      return signedIn()
+        && get(/databases/$(database)/documents/ufnDeployments/$(deploymentId)).data.campaignCrew is string
+        && isCampaignCrewAuth(get(/databases/$(database)/documents/ufnDeployments/$(deploymentId)).data.campaignCrew);
+    }
 
     match /profiles/{uid} {
       allow create: if isVerifiedEmailUser()
@@ -148,6 +159,139 @@ service cloud.firestore {
         allow delete: if isAdmin() || ownsMission(missionId) || (
           signedIn() && resource.data.playerId == request.auth.uid
         );
+      }
+    }
+
+    // Public, sanitised campaign directory. This contains only display name
+    // and active status. Campaign passwords and Firebase credential details
+    // remain in ufnCampaignCrews and are not listable publicly.
+    match /ufnCampaignDirectory/{crewSlug} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Campaign metadata. Passwords are held by Firebase Authentication and are
+    // never stored in Firestore.
+    match /ufnCampaignCrews/{crewSlug} {
+      allow get: if true;
+      allow list: if isAdmin();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (
+        signedIn()
+        && resource.data.active == true
+        && resource.data.authUid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "authUid", "authEmail", "passwordVersion", "passwordChangedAt", "updatedAt"
+        ])
+        && request.resource.data.authUid is string
+        && request.resource.data.authEmail is string
+        && request.resource.data.passwordVersion == resource.data.passwordVersion + 1
+      ) || (
+        signedIn()
+        && resource.data.active == true
+        && resource.data.authUid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "patchUrl", "patchUpdatedAt", "updatedAt"
+        ])
+      );
+    }
+
+    // UFN-only Interstellar Deployment Planner variant.
+    match /ufnDeployments/{deploymentId} {
+      // Known player links remain readable by any authenticated Firebase session.
+      allow get: if signedIn();
+
+      // Only admin or the matching campaign credential may enumerate deployments.
+      allow list: if isAdmin()
+        || (
+          signedIn()
+          && resource.data.campaignCrew is string
+          && isCampaignCrewAuth(resource.data.campaignCrew)
+        );
+
+      allow create: if isAdmin()
+        || (
+          signedIn()
+          && request.resource.data.campaignCrew is string
+          && isCampaignCrewAuth(request.resource.data.campaignCrew)
+          && request.resource.data.shipCount == 1
+          && request.resource.data.ghostShipName == ""
+        );
+
+      allow delete: if isAdmin()
+        || (
+          signedIn()
+          && resource.data.campaignCrew is string
+          && isCampaignCrewAuth(resource.data.campaignCrew)
+        );
+
+      // Keep the player responseCount update first so ordinary player saves do
+      // not need to evaluate campaign ownership.
+      allow update: if isAdmin()
+        || (
+          signedIn()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["responseCount", "updatedAt"])
+          && request.resource.data.responseCount == resource.data.responseCount + 1
+          && request.resource.data.responseCount <= (resource.data.shipCount == 2 ? 12 : 6)
+        )
+        || (
+          signedIn()
+          && resource.data.campaignCrew is string
+          && isCampaignCrewAuth(resource.data.campaignCrew)
+          && request.resource.data.campaignCrew == resource.data.campaignCrew
+          && request.resource.data.shipCount == 1
+          && request.resource.data.ghostShipName == ""
+        );
+
+      match /players/{playerId} {
+        allow read: if signedIn();
+
+        allow create: if isAdmin()
+          || (
+            signedIn()
+            && request.auth.uid == playerId
+            && request.resource.data.source == "player"
+            && request.resource.data.name is string
+            && request.resource.data.shipPref is string
+            && request.resource.data.prefs is list
+            && request.resource.data.prefs.size() == 3
+            && request.resource.data.dislikes is list
+          )
+          || campaignOwnsUfnDeployment(deploymentId);
+
+        allow update: if isAdmin()
+          || (
+            signedIn()
+            && request.auth.uid == playerId
+            && resource.data.source == "player"
+            && request.resource.data.source == "player"
+            && request.resource.data.name is string
+            && request.resource.data.shipPref is string
+            && request.resource.data.prefs is list
+            && request.resource.data.prefs.size() == 3
+            && request.resource.data.dislikes is list
+          )
+          || campaignOwnsUfnDeployment(deploymentId);
+
+        allow delete: if isAdmin() || campaignOwnsUfnDeployment(deploymentId);
+      }
+
+      match /nameClaims/{claimId} {
+        allow read: if signedIn();
+
+        allow create, update: if isAdmin()
+          || (
+            signedIn()
+            && request.resource.data.playerId == request.auth.uid
+          )
+          || campaignOwnsUfnDeployment(deploymentId);
+
+        allow delete: if isAdmin()
+          || (
+            signedIn()
+            && resource.data.playerId == request.auth.uid
+          )
+          || campaignOwnsUfnDeployment(deploymentId);
       }
     }
   }
