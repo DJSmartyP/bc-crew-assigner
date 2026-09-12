@@ -233,6 +233,9 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["responseCount", "updatedAt"])
           && request.resource.data.responseCount == resource.data.responseCount + 1
           && request.resource.data.responseCount <= (resource.data.shipCount == 2 ? 12 : 6)
+          && !exists(/databases/$(database)/documents/ufnDeployments/$(deploymentId)/players/$(request.auth.uid))
+          && existsAfter(/databases/$(database)/documents/ufnDeployments/$(deploymentId)/players/$(request.auth.uid))
+          && getAfter(/databases/$(database)/documents/ufnDeployments/$(deploymentId)/players/$(request.auth.uid)).data.source == "player"
         )
         || (
           signedIn()
@@ -246,16 +249,26 @@ service cloud.firestore {
       match /players/{playerId} {
         allow read: if signedIn();
 
+        function validUfnPlayerShape() {
+          return request.resource.data.keys().hasOnly([
+                   "name", "shipPref", "prefs", "dislikes", "source",
+                   "createdAt", "updatedAt"
+                 ])
+                 && request.resource.data.name is string
+                 && request.resource.data.shipPref is string
+                 && request.resource.data.prefs is list
+                 && request.resource.data.prefs.size() == 3
+                 && request.resource.data.dislikes is list;
+        }
+
         allow create: if isAdmin()
           || (
             signedIn()
             && request.auth.uid == playerId
+            && validUfnPlayerShape()
             && request.resource.data.source == "player"
-            && request.resource.data.name is string
-            && request.resource.data.shipPref is string
-            && request.resource.data.prefs is list
-            && request.resource.data.prefs.size() == 3
-            && request.resource.data.dislikes is list
+            && request.resource.data.createdAt == request.time
+            && request.resource.data.updatedAt == request.time
           )
           || campaignOwnsUfnDeployment(deploymentId);
 
@@ -263,13 +276,11 @@ service cloud.firestore {
           || (
             signedIn()
             && request.auth.uid == playerId
+            && validUfnPlayerShape()
             && resource.data.source == "player"
             && request.resource.data.source == "player"
-            && request.resource.data.name is string
-            && request.resource.data.shipPref is string
-            && request.resource.data.prefs is list
-            && request.resource.data.prefs.size() == 3
-            && request.resource.data.dislikes is list
+            && request.resource.data.createdAt == resource.data.createdAt
+            && request.resource.data.updatedAt == request.time
           )
           || campaignOwnsUfnDeployment(deploymentId);
 
@@ -277,11 +288,31 @@ service cloud.firestore {
       }
 
       match /nameClaims/{claimId} {
-        allow read: if signedIn();
+        function validUfnClaimShape() {
+          return request.resource.data.keys().hasOnly([
+                   "playerId", "name", "updatedAt"
+                 ])
+                 && request.resource.data.playerId is string
+                 && request.resource.data.name is string
+                 && request.resource.data.updatedAt == request.time;
+        }
 
-        allow create, update: if isAdmin()
+        allow get: if signedIn();
+        allow list: if isAdmin() || campaignOwnsUfnDeployment(deploymentId);
+
+        allow create: if isAdmin()
           || (
             signedIn()
+            && validUfnClaimShape()
+            && request.resource.data.playerId == request.auth.uid
+          )
+          || campaignOwnsUfnDeployment(deploymentId);
+
+        allow update: if isAdmin()
+          || (
+            signedIn()
+            && validUfnClaimShape()
+            && resource.data.playerId == request.auth.uid
             && request.resource.data.playerId == request.auth.uid
           )
           || campaignOwnsUfnDeployment(deploymentId);
